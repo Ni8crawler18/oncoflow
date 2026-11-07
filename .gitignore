@@ -17,3 +17,6 @@ web/.env.local
 
 docs/
 ui_samples/
+
+# local scratch
+tmp.txt

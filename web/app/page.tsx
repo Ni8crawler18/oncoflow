@@ -98,9 +98,6 @@ export default function Home() {
               <span className="text-5xl font-bold tracking-tight text-ink-900">
                 {stats ? `${stats.adherence}%` : "-"}
               </span>
-              <span className="mb-1.5 inline-flex items-center gap-1 text-sm font-semibold text-emerald-600">
-                ▲ {stats?.followup_uplift_pct ?? 35}% vs standard HMS
-              </span>
             </div>
             <div className="mt-1 text-xs text-ink-400">
               Completed follow-ups across all patients, last 6 months

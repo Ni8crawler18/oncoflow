@@ -43,12 +43,16 @@ export default function TreatmentTracker() {
     });
   }, [patients, followups]);
 
-  const byRegimen = useMemo(() => {
-    return rows.reduce<Record<string, Row[]>>((acc, r) => {
-      (acc[r.regimen || "Unassigned regimen"] ||= []).push(r);
-      return acc;
-    }, {});
-  }, [rows]);
+  // Sort by regimen (keeps same-regimen patients adjacent), then by name.
+  const sorted = useMemo(
+    () =>
+      [...rows].sort(
+        (a, b) =>
+          (a.regimen || "").localeCompare(b.regimen || "") ||
+          a.name.localeCompare(b.name)
+      ),
+    [rows]
+  );
 
   return (
     <div>
@@ -56,71 +60,61 @@ export default function TreatmentTracker() {
         title="Treatment Tracker"
         subtitle="Where every patient stands on their chemotherapy course — cycles completed, the next visit due, and who has fallen behind."
       />
-      <div className="space-y-5">
-        {Object.entries(byRegimen).map(([regimen, list]) => (
-          <div key={regimen} className="card p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-ink-900">{regimen}</h2>
-              <span className="pill bg-brand-50 text-brand-600">
-                {list.length} patient{list.length > 1 ? "s" : ""}
-              </span>
-            </div>
-            <div className="overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-[11px] uppercase tracking-wider text-ink-400">
-                    <th className="pb-2 font-semibold">Patient</th>
-                    <th className="pb-2 font-semibold">Cycles done</th>
-                    <th className="pb-2 font-semibold">Next visit</th>
-                    <th className="pb-2 text-right font-semibold">Risk</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {list.map((p) => (
-                    <tr
-                      key={p.id}
-                      className="border-t border-black/[0.04] hover:bg-brand-50/40"
-                    >
-                      <td className="py-2.5">
-                        <Link
-                          href={`/patients/${p.id}`}
-                          className="flex items-center gap-3"
-                        >
-                          <Avatar name={p.name} />
-                          <div className="min-w-0">
-                            <div className="truncate font-medium text-ink-900">
-                              {p.name}
-                            </div>
-                            <div className="truncate text-xs text-ink-400">
-                              {p.cancer_type} · {p.stage} · {p.treatment_line}
-                            </div>
-                          </div>
-                        </Link>
-                      </td>
-                      <td className="py-2.5 text-ink-700">{p.cycles}</td>
-                      <td className="py-2.5">
-                        {p.overdue ? (
-                          <span className="pill bg-rose-50 text-rose-600">
-                            Overdue
-                          </span>
-                        ) : p.next ? (
-                          <span className="text-ink-700">
-                            {p.next.kind} · {fmtDate(p.next.scheduled_for)}
-                          </span>
-                        ) : (
-                          <span className="pill bg-amber-50 text-amber-600">
-                            Needs scheduling
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-2.5 text-right">{riskPill(p.risk)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ))}
+      <div className="card overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-black/[0.06] text-left text-[11px] uppercase tracking-wider text-ink-400">
+              <th className="px-5 py-3 font-semibold">Patient</th>
+              <th className="px-5 py-3 font-semibold">Regimen</th>
+              <th className="px-5 py-3 font-semibold">Cycles done</th>
+              <th className="px-5 py-3 font-semibold">Next visit</th>
+              <th className="px-5 py-3 text-right font-semibold">Risk</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((p) => (
+              <tr
+                key={p.id}
+                className="border-b border-black/[0.04] last:border-0 hover:bg-brand-50/40"
+              >
+                <td className="px-5 py-3">
+                  <Link href={`/patients/${p.id}`} className="flex items-center gap-3">
+                    <Avatar name={p.name} />
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-ink-900">{p.name}</div>
+                      <div className="truncate text-xs text-ink-400">
+                        {p.cancer_type} · {p.stage} · {p.treatment_line}
+                      </div>
+                    </div>
+                  </Link>
+                </td>
+                <td className="px-5 py-3 text-ink-600">{p.regimen || "—"}</td>
+                <td className="px-5 py-3 text-ink-700">{p.cycles}</td>
+                <td className="px-5 py-3">
+                  {p.overdue ? (
+                    <span className="pill bg-rose-50 text-rose-600">Overdue</span>
+                  ) : p.next ? (
+                    <span className="text-ink-700">
+                      {p.next.kind} · {fmtDate(p.next.scheduled_for)}
+                    </span>
+                  ) : (
+                    <span className="pill bg-amber-50 text-amber-600">
+                      Needs scheduling
+                    </span>
+                  )}
+                </td>
+                <td className="px-5 py-3 text-right">{riskPill(p.risk)}</td>
+              </tr>
+            ))}
+            {sorted.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-5 py-10 text-center text-ink-400">
+                  No patients on treatment yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );

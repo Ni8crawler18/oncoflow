@@ -53,13 +53,13 @@ export default function LoginPage() {
             Keep every oncology patient connected to care.
           </h1>
           <p className="mt-4 max-w-md text-white/70">
-            Early identification of patients needing follow-up, WhatsApp engagement,
+            Early identification of patients needing follow-up, Telegram engagement,
             and conflict-free scheduling, in one premium workspace for care teams.
           </p>
           <div className="mt-9 grid grid-cols-3 gap-6">
             {[
               ["35%", "fewer missed follow-ups"],
-              ["WhatsApp", "patient engagement"],
+              ["Telegram", "patient engagement"],
               ["0 clashes", "smart scheduling"],
             ].map(([a, b]) => (
               <div key={b}>

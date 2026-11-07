@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { api } from "@/lib/api";
+import { api, Patient } from "@/lib/api";
+import { Icon } from "@/components/icons";
 
+const BOT = "oncoflow_bot";
 const field =
   "w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 const label = "mb-1.5 block text-xs font-medium text-ink-700";
@@ -27,6 +29,8 @@ export default function AddPatientModal({
   });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [created, setCreated] = useState<Patient | null>(null);
+  const [copied, setCopied] = useState(false);
 
   function set(k: string, v: string) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -41,7 +45,7 @@ export default function AddPatientModal({
     }
     setBusy(true);
     try {
-      await api.createPatient({
+      const patient = await api.createPatient({
         name: form.name,
         phone: form.phone,
         age: Number(form.age) || 0,
@@ -53,13 +57,17 @@ export default function AddPatientModal({
         risk: form.risk,
       });
       onCreated();
-      onClose();
+      setCreated(patient);
     } catch (err: any) {
       setError(err.message || "Could not create patient");
     } finally {
       setBusy(false);
     }
   }
+
+  const link = created
+    ? `https://t.me/${BOT}?start=${encodeURIComponent(created.mrn)}`
+    : "";
 
   return (
     <div
@@ -71,19 +79,82 @@ export default function AddPatientModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-ink-900">New patient</h2>
+          <h2 className="text-lg font-semibold text-ink-900">
+            {created ? "Patient added" : "New patient"}
+          </h2>
           <button onClick={onClose} className="text-ink-400 hover:text-ink-700">
             ✕
           </button>
         </div>
 
+        {created ? (
+          <div>
+            <div className="mb-4 flex items-center gap-3 rounded-xl bg-emerald-50 p-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 text-white">
+                ✓
+              </div>
+              <div className="text-sm">
+                <div className="font-medium text-ink-900">
+                  {created.name} · {created.mrn}
+                </div>
+                <div className="text-xs text-ink-500">
+                  Added to your panel.
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-ink-800">
+              <Icon.telegram width={16} height={16} /> Link their Telegram
+            </div>
+            <p className="mb-3 text-xs text-ink-500">
+              Share this link with the patient. When they open it and tap Start,
+              their Telegram connects to this record and the care team can message
+              them. (The bot links them by their ID — {created.mrn}.)
+            </p>
+            <div className="flex gap-2">
+              <input
+                readOnly
+                value={link}
+                className={`${field} font-mono text-xs`}
+                onFocus={(e) => e.currentTarget.select()}
+              />
+              <button
+                onClick={() => {
+                  navigator.clipboard?.writeText(link);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                }}
+                className="whitespace-nowrap rounded-xl bg-brand-500 px-4 text-sm font-semibold text-white hover:bg-brand-600"
+              >
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <a
+              href={link}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-block text-xs font-medium text-brand-600 hover:underline"
+            >
+              Open in Telegram ↗
+            </a>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={onClose}
+                className="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        ) : (
         <form onSubmit={submit} className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <label className={label}>Full name *</label>
             <input className={field} value={form.name} onChange={(e) => set("name", e.target.value)} />
           </div>
           <div>
-            <label className={label}>Phone (WhatsApp) *</label>
+            <label className={label}>Phone *</label>
             <input className={field} placeholder="+91…" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -140,6 +211,7 @@ export default function AddPatientModal({
             </button>
           </div>
         </form>
+        )}
       </div>
     </div>
   );

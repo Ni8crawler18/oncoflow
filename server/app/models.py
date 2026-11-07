@@ -49,6 +49,9 @@ class Patient(Base):
     diagnosed_on: Mapped[date] = mapped_column(Date)
     last_contact: Mapped[date | None] = mapped_column(Date, nullable=True)
 
+    # Telegram chat id, set when the patient links via the bot.
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+
     doctor_id: Mapped[int] = mapped_column(ForeignKey("doctors.id"))
     doctor: Mapped["Doctor"] = relationship(back_populates="patients")
 

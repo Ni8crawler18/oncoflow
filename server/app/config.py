@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     meta_verify_token: str = "oncoflow-verify"   # for webhook verification handshake
     meta_graph_version: str = "v21.0"
 
+    # Telegram Bot API (patient chat channel)
+    telegram_bot_token: str = ""
+
     # Sarvam AI — conversational patient follow-up.
     sarvam_api_key: str = ""
     sarvam_model: str = "sarvam-105b-conversations"

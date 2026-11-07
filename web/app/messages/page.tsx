@@ -28,12 +28,12 @@ export default function MessagesPage() {
   return (
     <div>
       <PageHeader
-        title="WhatsApp Inbox"
+        title="Telegram Inbox"
         subtitle="Patient messages are auto-classified and filed under each patient."
         right={
           <div className="flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-sm shadow-soft">
-            <Icon.chat width={15} height={15} className="text-emerald-500" />
-            <span className="font-medium text-ink-700">Twilio WhatsApp</span>
+            <Icon.telegram width={16} height={16} />
+            <span className="font-medium text-ink-700">Telegram</span>
           </div>
         }
       />

@@ -99,6 +99,16 @@ export const Icon = {
       <path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2" />
     </svg>
   ),
+  // Telegram paper-plane mark (uses its own brand blue, ignores stroke)
+  telegram: (p: any) => (
+    <svg viewBox="0 0 24 24" width={18} height={18} fill="none" {...p}>
+      <circle cx="12" cy="12" r="12" fill="#29A9EB" />
+      <path
+        d="M5.5 11.8 17 7.3c.5-.2 1 .1.84.86l-1.96 9.24c-.13.6-.5.75-1 .47l-2.77-2.04-1.34 1.29c-.15.14-.27.27-.55.27l.2-2.82L15.8 9.3c.22-.2-.05-.3-.34-.11l-6.3 3.97-2.72-.85c-.59-.18-.6-.59.13-.88Z"
+        fill="#fff"
+      />
+    </svg>
+  ),
   search: (p: any) => (
     <svg {...base} {...p}>
       <circle cx="11" cy="11" r="7" />

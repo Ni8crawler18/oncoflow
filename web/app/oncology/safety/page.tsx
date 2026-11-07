@@ -27,7 +27,7 @@ export default function SafetyPage() {
     <div>
       <PageHeader
         title="Safety & Toxicity"
-        subtitle="Patient-reported symptoms captured from WhatsApp, flagged for triage."
+        subtitle="Patient-reported symptoms captured from Telegram, flagged for triage."
       />
 
       <div className="mb-5 card border-l-4 border-l-rose-400 p-4">
@@ -69,7 +69,7 @@ export default function SafetyPage() {
         ))}
         {symptoms.length === 0 && (
           <p className="card p-8 text-center text-sm text-ink-400">
-            No symptoms reported yet. They appear here as patients message over WhatsApp.
+            No symptoms reported yet. They appear here as patients message over Telegram.
           </p>
         )}
       </div>

@@ -1,14 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
-from fastapi.responses import PlainTextResponse
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..config import settings
 from ..database import get_db
 from ..models import Message, Patient
 from ..schemas import MessageOut, SendMessage
 from ..services import messaging
-from ..clients import whatsapp
+from ..clients import telegram
 
 router = APIRouter(prefix="/api/messages", tags=["messages"])
 
@@ -45,41 +43,51 @@ def checkin(payload: dict, db: Session = Depends(get_db)):
         raise HTTPException(409, str(exc))
 
 
-# ---- Meta WhatsApp Cloud API webhook ----
+# ---- Telegram webhook ----
 
-@router.get("/webhook", response_class=PlainTextResponse)
-def verify_webhook(
-    hub_mode: str = Query("", alias="hub.mode"),
-    hub_verify_token: str = Query("", alias="hub.verify_token"),
-    hub_challenge: str = Query("", alias="hub.challenge"),
-):
-    """Meta webhook verification handshake. Echoes the challenge when the
-    verify token matches."""
-    if hub_mode == "subscribe" and hub_verify_token == settings.meta_verify_token:
-        return PlainTextResponse(hub_challenge)
-    raise HTTPException(403, "Verification failed")
+WELCOME = ("Welcome to OncoFlow. Your Telegram is now linked to your care team. "
+           "You can message here anytime to report symptoms or ask questions.")
+ASK_ID = ("Welcome to OncoFlow. To link your account, please reply with your "
+          "patient ID (for example ONC-1001), which your care team gave you.")
+NOT_FOUND = ("Sorry, we couldn't find a patient with that ID. Please check the ID "
+             "your care team gave you and try again.")
 
 
-@router.post("/webhook")
-async def inbound_webhook(request: Request, db: Session = Depends(get_db)):
-    """Meta WhatsApp inbound webhook.
+@router.post("/telegram")
+async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
+    """Telegram inbound webhook. Links new chats by patient ID, then runs the
+    AI symptom-capture + follow-up loop for linked patients."""
+    update = await request.json()
+    msg = update.get("message") or update.get("edited_message")
+    if not msg:
+        return {"ok": True}
+    chat_id = str(msg.get("chat", {}).get("id", ""))
+    text = (msg.get("text") or "").strip()
+    if not chat_id or not text:
+        return {"ok": True}
 
-    Files each inbound message, captures any symptom into post-care symptoms,
-    generates an AI follow-up reply (Sarvam), and sends it back over WhatsApp.
-    """
-    body = await request.json()
-    for entry in body.get("entry", []):
-        for change in entry.get("changes", []):
-            value = change.get("value", {})
-            for msg in value.get("messages", []):
-                if msg.get("type") != "text":
-                    continue
-                from_phone = msg.get("from", "")
-                text = (msg.get("text") or {}).get("body", "")
-                if not text:
-                    continue
-                result = messaging.file_inbound(db, from_phone, text)
-                reply = result.get("reply")
-                if result.get("patient") and reply:
-                    whatsapp.send(result["patient"].phone, reply)
-    return {"status": "ok"}
+    patient = messaging.patient_by_chat(db, chat_id)
+
+    # /start [<MRN>] linking flow
+    if text.startswith("/start"):
+        payload = text[len("/start"):].strip()
+        if patient:
+            telegram.send(chat_id, WELCOME)
+        elif payload:
+            linked = messaging.link_patient(db, chat_id, payload)
+            telegram.send(chat_id, WELCOME if linked else NOT_FOUND)
+        else:
+            telegram.send(chat_id, ASK_ID)
+        return {"ok": True}
+
+    if not patient:
+        # Try to interpret the message as a patient ID to link the account.
+        linked = messaging.link_patient(db, chat_id, text)
+        telegram.send(chat_id, WELCOME if linked else ASK_ID)
+        return {"ok": True}
+
+    result = messaging.file_inbound(db, patient, text)
+    reply = result.get("reply")
+    if reply:
+        telegram.send(chat_id, reply)
+    return {"ok": True}

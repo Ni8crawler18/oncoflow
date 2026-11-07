@@ -7,7 +7,7 @@ from ..clients import sarvam
 from ..models import Patient, Message
 
 CARE_SYSTEM = (
-    "You are OncoFlow, a warm, concise WhatsApp care assistant for an oncology "
+    "You are OncoFlow, a warm, concise Telegram care assistant for an oncology "
     "clinic, messaging on behalf of the patient's care team. Keep every reply to "
     "1-2 short, plain-language sentences. Be reassuring, never alarmist, and never "
     "give a diagnosis or change medication. When a patient reports a symptom, "
@@ -41,7 +41,7 @@ def generate_checkin(patient: Patient) -> str:
         {"role": "system", "content": CARE_SYSTEM},
         {"role": "user", "content": (
             f"{_patient_context(patient)}\n\n"
-            "Write a brief, friendly WhatsApp check-in that greets the patient by "
+            "Write a brief, friendly check-in that greets the patient by "
             "first name and asks how they have been feeling since their last "
             "treatment, inviting them to share any new symptoms."
         )},
@@ -78,7 +78,7 @@ def analyze_symptom(text: str) -> dict | None:
         return None
     prompt = [
         {"role": "system", "content": (
-            "You are a clinical triage assistant. Given a patient's WhatsApp "
+            "You are a clinical triage assistant. Given a patient's "
             "message, decide if it reports a physical symptom or side effect. "
             "Respond with ONLY compact JSON: "
             '{"is_symptom": true/false, "summary": "<short clinical summary>", '

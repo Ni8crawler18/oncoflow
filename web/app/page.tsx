@@ -58,7 +58,7 @@ export default function Home() {
     {
       label: "NEW SYMPTOMS",
       value: stats?.new_symptoms ?? "-",
-      hint: "via WhatsApp",
+      hint: "via Telegram",
       icon: Icon.chat,
       tint: "text-rose-600",
     },

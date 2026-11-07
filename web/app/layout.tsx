@@ -5,7 +5,7 @@ import AppShell from "@/components/AppShell";
 export const metadata: Metadata = {
   title: "Oncoflow",
   description:
-    "Keep oncology patients connected across their care journey with follow-ups, WhatsApp engagement and conflict-free scheduling for care teams.",
+    "Keep oncology patients connected across their care journey with follow-ups, Telegram engagement and conflict-free scheduling for care teams.",
 };
 
 export default function RootLayout({

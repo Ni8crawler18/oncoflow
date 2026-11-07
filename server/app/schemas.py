@@ -58,6 +58,7 @@ class PatientOut(ORM, PatientBase):
     diagnosed_on: date
     last_contact: date | None
     doctor_id: int
+    telegram_chat_id: str | None = None
 
 
 # ---- Follow-ups ----

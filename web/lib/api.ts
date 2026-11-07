@@ -30,6 +30,7 @@ export interface Patient {
   diagnosed_on: string;
   last_contact: string | null;
   doctor_id: number;
+  telegram_chat_id: string | null;
 }
 
 export interface FollowUp {

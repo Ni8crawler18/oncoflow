@@ -78,7 +78,7 @@ export default function PatientDetail() {
     ["Regimen", patient.regimen],
     ["Diagnosed", patient.diagnosed_on],
     ["Last contact", patient.last_contact ?? "-"],
-    ["Phone (WhatsApp)", patient.phone],
+    ["Phone", patient.phone],
     ["MRN", patient.mrn],
   ];
 
@@ -86,7 +86,7 @@ export default function PatientDetail() {
     ["timeline", "Timeline"],
     ["symptoms", `Post-care Symptoms (${symptoms.length})`],
     ["followups", `Follow-ups (${followups.length})`],
-    ["messages", `WhatsApp (${messages.length})`],
+    ["messages", `Telegram (${messages.length})`],
     ["notes", `Notes (${notes.length})`],
   ] as const;
 
@@ -163,7 +163,7 @@ export default function PatientDetail() {
         <div className="card p-5">
           {symptoms.length === 0 && (
             <p className="text-sm text-ink-400">
-              No symptoms reported yet. Symptoms the patient shares over WhatsApp are
+              No symptoms reported yet. Symptoms the patient shares over Telegram are
               captured here automatically.
             </p>
           )}
@@ -213,8 +213,11 @@ export default function PatientDetail() {
       {tab === "messages" && (
         <div className="card flex h-[500px] flex-col p-5">
           <div className="mb-3 flex items-center justify-between border-b border-black/[0.06] pb-3">
-            <div className="text-xs text-ink-400">
-              WhatsApp · replies are AI-assisted follow-ups
+            <div className="flex items-center gap-1.5 text-xs text-ink-400">
+              <Icon.telegram width={15} height={15} />
+              {patient.telegram_chat_id
+                ? "Telegram linked · replies are AI-assisted"
+                : "Not linked yet · patient must send their ID to the bot"}
             </div>
             <button
               onClick={aiCheckin}
@@ -253,7 +256,7 @@ export default function PatientDetail() {
               </div>
             ))}
             {messages.length === 0 && (
-              <p className="text-sm text-ink-400">No WhatsApp messages yet.</p>
+              <p className="text-sm text-ink-400">No Telegram messages yet.</p>
             )}
           </div>
           {chatErr && (
@@ -266,7 +269,7 @@ export default function PatientDetail() {
               value={reply}
               onChange={(e) => setReply(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && sendReply()}
-              placeholder="Reply on WhatsApp…"
+              placeholder="Reply on Telegram…"
               className="flex-1 rounded-xl border border-black/10 px-3.5 py-2.5 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
             />
             <button

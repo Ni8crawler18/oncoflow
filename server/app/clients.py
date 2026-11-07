@@ -97,3 +97,43 @@ class SarvamClient:
 
 
 sarvam = SarvamClient()
+
+
+class TelegramClient:
+    """Telegram Bot API (patient chat channel)."""
+
+    @property
+    def live(self) -> bool:
+        return bool(settings.telegram_bot_token)
+
+    def _api(self, method: str, payload: dict) -> dict:
+        url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/{method}"
+        req = urllib.request.Request(
+            url, data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return json.loads(resp.read())
+        except urllib.error.HTTPError as exc:
+            err = exc.read().decode(errors="replace")
+            logger.warning("Telegram %s failed: %s", method, err)
+            return {"ok": False, "error": err}
+        except Exception as exc:  # pragma: no cover
+            logger.warning("Telegram %s failed: %s", method, exc)
+            return {"ok": False, "error": str(exc)}
+
+    def send(self, chat_id: str | int, text: str) -> dict:
+        if not self.live:
+            logger.info("[MOCK Telegram] chat=%s text=%s", chat_id, text)
+            return {"status": "mock", "to": str(chat_id)}
+        r = self._api("sendMessage", {"chat_id": chat_id, "text": text})
+        return {"status": "sent" if r.get("ok") else "failed",
+                "to": str(chat_id), "error": r.get("error")}
+
+    def set_webhook(self, url: str) -> dict:
+        return self._api("setWebhook", {"url": url,
+                                        "allowed_updates": ["message"]})
+
+
+telegram = TelegramClient()

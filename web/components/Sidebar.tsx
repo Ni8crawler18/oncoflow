@@ -20,7 +20,7 @@ const groups = [
     items: [
       { href: "/appointments", label: "Appointments", icon: Icon.calendar },
       { href: "/schedule", label: "Follow-ups & Scheduling", icon: Icon.bolt },
-      { href: "/messages", label: "WhatsApp Inbox", icon: Icon.chat },
+      { href: "/messages", label: "Telegram Inbox", icon: Icon.chat },
     ],
   },
   {

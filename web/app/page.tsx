@@ -143,22 +143,34 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Banner */}
-      <div className="card mb-5 flex items-center justify-between p-4">
-        <div className="flex items-center gap-3">
-          <span className="text-xl">🎯</span>
+      {/* Banner — only an alert when there's something to act on */}
+      {(stats?.overdue ?? 0) > 0 ? (
+        <div className="card mb-5 flex items-center justify-between p-4">
+          <div className="flex items-center gap-3">
+            <span className="text-xl">🎯</span>
+            <p className="text-sm text-ink-700">
+              <span className="font-semibold">
+                {stats?.overdue} patient{stats?.overdue !== 1 ? "s" : ""}
+              </span>{" "}
+              overdue for follow-up. Re-engage them before they're lost to care.
+            </p>
+          </div>
+          <Link
+            href="/schedule"
+            className="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600"
+          >
+            Review
+          </Link>
+        </div>
+      ) : (
+        <div className="card mb-5 flex items-center gap-3 p-4">
+          <span className="text-xl">✅</span>
           <p className="text-sm text-ink-700">
-            <span className="font-semibold">{stats?.overdue ?? 0} patients</span>{" "}
-            are overdue for follow-up. Re-engage them before they're lost to care.
+            <span className="font-semibold">No patients overdue.</span> Everyone on
+            your panel has an upcoming or recent follow-up.
           </p>
         </div>
-        <Link
-          href="/schedule"
-          className="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600"
-        >
-          Review
-        </Link>
-      </div>
+      )}
 
       {/* Stat cards */}
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">

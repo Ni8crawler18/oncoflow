@@ -37,7 +37,7 @@ export default function AnalyticsPage() {
   const kpis = [
     ["Patients", stats?.total_patients],
     ["Follow-up adherence", stats ? `${stats.adherence}%` : "-"],
-    ["Uplift vs HMS", stats ? `+${stats.followup_uplift_pct}%` : "-"],
+    ["High risk", stats?.high_risk],
     ["Overdue", stats?.overdue],
   ];
 

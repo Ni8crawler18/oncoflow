@@ -5,7 +5,7 @@ import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import { Icon } from "@/components/icons";
 import { statusPill } from "@/lib/ui";
-import { api, FollowUp } from "@/lib/api";
+import { api, FollowUp, AutoScheduleResult } from "@/lib/api";
 
 const KIND_COLOR: Record<string, string> = {
   chemo: "bg-violet-100 text-violet-700",
@@ -29,7 +29,8 @@ export default function AppointmentsPage() {
   });
   const [selected, setSelected] = useState<string>(ymd(new Date()));
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
+  const [result, setResult] = useState<AutoScheduleResult | null>(null);
+  const [err, setErr] = useState("");
 
   function load() {
     api.allFollowups().then(setItems).catch(() => {});
@@ -38,15 +39,13 @@ export default function AppointmentsPage() {
 
   async function runAuto() {
     setBusy(true);
-    setMsg("");
+    setErr("");
     try {
       const r = await api.autoSchedule();
-      setMsg(
-        `Auto-scheduled ${r.created} new appointment${r.created !== 1 ? "s" : ""}.`
-      );
+      setResult(r);
       load();
     } catch {
-      setMsg("Auto-schedule failed.");
+      setErr("Auto-schedule failed.");
     } finally {
       setBusy(false);
     }
@@ -99,7 +98,90 @@ export default function AppointmentsPage() {
           </button>
         }
       />
-      {msg && <div className="mb-4 text-sm text-emerald-600">{msg}</div>}
+      {err && <div className="mb-4 text-sm text-rose-600">{err}</div>}
+
+      {result && (
+        <div className="card mb-5 p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-ink-900">
+              {result.created === 0
+                ? "Everyone already has an upcoming visit"
+                : `Booked ${result.created} follow-up${
+                    result.created !== 1 ? "s" : ""
+                  } · ${result.notified} patient${
+                    result.notified !== 1 ? "s" : ""
+                  } notified on Telegram`}
+            </h2>
+            <button
+              onClick={() => setResult(null)}
+              className="text-xs text-ink-400 hover:text-ink-700"
+            >
+              Dismiss
+            </button>
+          </div>
+          {result.created === 0 && (
+            <p className="text-sm text-ink-400">
+              {result.already_scheduled} patient
+              {result.already_scheduled !== 1 ? "s" : ""} skipped — no action
+              needed.
+            </p>
+          )}
+          <div className="space-y-2">
+            {result.items.map((it) => (
+              <Link
+                key={it.patient_id}
+                href={`/patients/${it.patient_id}`}
+                className="flex items-start gap-3 rounded-xl border border-black/[0.05] p-3 transition hover:bg-brand-50/40"
+              >
+                <span
+                  className={`mt-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                    KIND_COLOR[it.kind] || "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  {it.kind}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-ink-900">
+                      {it.patient_name}
+                    </span>
+                    <span className="text-xs text-ink-500">
+                      {new Date(it.scheduled_for).toLocaleString(undefined, {
+                        weekday: "short",
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                    {it.priority === "high" && (
+                      <span className="rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-600">
+                        high priority
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-xs text-ink-500">{it.reason}</p>
+                </div>
+                <span
+                  className={`mt-0.5 whitespace-nowrap text-[11px] font-medium ${
+                    it.notified
+                      ? "text-emerald-600"
+                      : it.linked
+                      ? "text-amber-600"
+                      : "text-ink-400"
+                  }`}
+                >
+                  {it.notified
+                    ? "✓ Notified"
+                    : it.linked
+                    ? "Send failed"
+                    : "Not on Telegram"}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {/* Calendar */}

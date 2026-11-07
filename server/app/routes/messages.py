@@ -3,28 +3,38 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Message, Patient
+from ..models import Message, Patient, Doctor
 from ..schemas import MessageOut, SendMessage
 from ..services import messaging
 from ..clients import telegram
+from .auth import current_doctor
 
 router = APIRouter(prefix="/api/messages", tags=["messages"])
 
 
+def _owned(db: Session, doctor: Doctor, patient_id) -> Patient:
+    patient = db.get(Patient, patient_id)
+    if not patient or patient.doctor_id != doctor.id:
+        raise HTTPException(404, "Patient not found")
+    return patient
+
+
 @router.get("", response_model=list[MessageOut])
-def recent_messages(category: str | None = None, db: Session = Depends(get_db)):
-    stmt = select(Message).order_by(Message.created_at.desc()).limit(100)
+def recent_messages(category: str | None = None,
+                    doctor: Doctor = Depends(current_doctor),
+                    db: Session = Depends(get_db)):
+    stmt = (select(Message).join(Patient)
+            .where(Patient.doctor_id == doctor.id)
+            .order_by(Message.created_at.desc()).limit(100))
     if category:
-        stmt = select(Message).where(Message.category == category) \
-            .order_by(Message.created_at.desc()).limit(100)
+        stmt = stmt.where(Message.category == category)
     return list(db.scalars(stmt))
 
 
 @router.post("/send", response_model=MessageOut, status_code=201)
-def send(payload: SendMessage, db: Session = Depends(get_db)):
-    patient = db.get(Patient, payload.patient_id)
-    if not patient:
-        raise HTTPException(404, "Patient not found")
+def send(payload: SendMessage, doctor: Doctor = Depends(current_doctor),
+         db: Session = Depends(get_db)):
+    patient = _owned(db, doctor, payload.patient_id)
     try:
         return messaging.send_outbound(db, patient, payload.body)
     except messaging.DeliveryError as exc:
@@ -32,11 +42,10 @@ def send(payload: SendMessage, db: Session = Depends(get_db)):
 
 
 @router.post("/checkin", response_model=MessageOut, status_code=201)
-def checkin(payload: dict, db: Session = Depends(get_db)):
+def checkin(payload: dict, doctor: Doctor = Depends(current_doctor),
+            db: Session = Depends(get_db)):
     """Send an AI-generated follow-up check-in to a patient."""
-    patient = db.get(Patient, payload.get("patient_id"))
-    if not patient:
-        raise HTTPException(404, "Patient not found")
+    patient = _owned(db, doctor, payload.get("patient_id"))
     try:
         return messaging.ai_checkin(db, patient)
     except messaging.DeliveryError as exc:

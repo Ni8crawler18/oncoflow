@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import User
+from ..models import User, Doctor
 from ..schemas import RegisterRequest, LoginRequest, AuthResponse, UserOut
 from ..security import hash_password, verify_password, create_token, decode_token
 
@@ -22,6 +22,24 @@ def current_user(
     if not user:
         raise HTTPException(401, "User no longer exists")
     return user
+
+
+def current_doctor(
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> Doctor:
+    """The Doctor record that owns a signed-in user's patient panel.
+
+    User (auth) and Doctor (clinical) are matched by email; the Doctor row is
+    created lazily on first use so every account has its own, isolated panel.
+    """
+    doctor = db.scalar(select(Doctor).where(Doctor.email == user.email))
+    if not doctor:
+        doctor = Doctor(name=user.name, email=user.email, specialty=user.specialty)
+        db.add(doctor)
+        db.commit()
+        db.refresh(doctor)
+    return doctor
 
 
 @router.post("/register", response_model=AuthResponse, status_code=201)

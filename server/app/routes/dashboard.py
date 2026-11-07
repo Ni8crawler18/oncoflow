@@ -4,22 +4,24 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Patient, FollowUp, Message, Symptom
+from ..models import Patient, FollowUp, Message, Symptom, Doctor
+from .auth import current_doctor
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
 @router.get("/stats")
-def stats(db: Session = Depends(get_db)):
+def stats(doctor: Doctor = Depends(current_doctor), db: Session = Depends(get_db)):
     now = datetime.now()
     today = date.today()
 
-    total_patients = db.scalar(select(func.count()).select_from(Patient)) or 0
-    high_risk = db.scalar(
-        select(func.count()).select_from(Patient).where(Patient.risk == "high")
-    ) or 0
+    patients = list(db.scalars(
+        select(Patient).where(Patient.doctor_id == doctor.id)))
+    pids = {p.id for p in patients}
+    total_patients = len(patients)
+    high_risk = sum(1 for p in patients if p.risk == "high")
 
-    followups = list(db.scalars(select(FollowUp)))
+    followups = [f for f in db.scalars(select(FollowUp)) if f.patient_id in pids]
     overdue = sum(
         1 for f in followups
         if f.status == "scheduled" and f.scheduled_for < now
@@ -31,9 +33,10 @@ def stats(db: Session = Depends(get_db)):
     completed = sum(1 for f in followups if f.status == "completed")
     missed = sum(1 for f in followups if f.status == "missed")
 
-    new_symptoms = db.scalar(
-        select(func.count()).select_from(Symptom).where(Symptom.status == "open")
-    ) or 0
+    new_symptoms = sum(
+        1 for s in db.scalars(select(Symptom).where(Symptom.status == "open"))
+        if s.patient_id in pids
+    )
 
     # Follow-up adherence = completed / (completed + missed)
     denom = completed + missed
@@ -52,9 +55,11 @@ def stats(db: Session = Depends(get_db)):
 
 
 @router.get("/activity")
-def activity(db: Session = Depends(get_db)):
+def activity(doctor: Doctor = Depends(current_doctor), db: Session = Depends(get_db)):
     msgs = list(db.scalars(
-        select(Message).order_by(Message.created_at.desc()).limit(8)
+        select(Message).join(Patient)
+        .where(Patient.doctor_id == doctor.id)
+        .order_by(Message.created_at.desc()).limit(8)
     ))
     out = []
     for m in msgs:
@@ -70,9 +75,11 @@ def activity(db: Session = Depends(get_db)):
 
 
 @router.get("/symptoms")
-def symptoms(db: Session = Depends(get_db)):
+def symptoms(doctor: Doctor = Depends(current_doctor), db: Session = Depends(get_db)):
     rows = list(db.scalars(
-        select(Symptom).order_by(Symptom.reported_at.desc()).limit(50)
+        select(Symptom).join(Patient)
+        .where(Patient.doctor_id == doctor.id)
+        .order_by(Symptom.reported_at.desc()).limit(50)
     ))
     out = []
     for s in rows:
@@ -91,9 +98,10 @@ def symptoms(db: Session = Depends(get_db)):
 
 
 @router.get("/trend")
-def trend(db: Session = Depends(get_db)):
+def trend(doctor: Doctor = Depends(current_doctor), db: Session = Depends(get_db)):
     """Follow-up completions over the last 6 months (for the chart)."""
-    followups = list(db.scalars(select(FollowUp)))
+    followups = list(db.scalars(
+        select(FollowUp).join(Patient).where(Patient.doctor_id == doctor.id)))
     buckets: dict[str, int] = {}
     today = date.today()
     labels = []

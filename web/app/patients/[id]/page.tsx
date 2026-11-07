@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
@@ -41,6 +41,86 @@ export default function PatientDetail() {
     api.patientSymptoms(pid).then(setSymptoms).catch(() => {});
   }
   useEffect(load, [pid]);
+
+  type TLEvent = {
+    key: string;
+    ts: number;
+    icon: keyof typeof Icon;
+    color: string;
+    title: string;
+    tag?: React.ReactNode;
+    meta: string;
+    body?: string;
+  };
+
+  const timeline = useMemo<TLEvent[]>(() => {
+    const ev: TLEvent[] = [];
+    for (const f of followups) {
+      ev.push({
+        key: `f${f.id}`,
+        ts: new Date(f.scheduled_for).getTime(),
+        icon: "calendar",
+        color: "bg-brand-50 text-brand-600",
+        title: f.title,
+        tag: statusPill(f.status),
+        meta: formatTime(f.scheduled_for),
+        body: f.reason || undefined,
+      });
+    }
+    for (const s of symptoms) {
+      ev.push({
+        key: `s${s.id}`,
+        ts: new Date(s.reported_at).getTime(),
+        icon: "pulse",
+        color: "bg-rose-50 text-rose-600",
+        title: `Symptom reported · ${s.severity}`,
+        meta: `${timeAgo(s.reported_at)} · via ${s.source}`,
+        body: s.description,
+      });
+    }
+    for (const m of messages) {
+      ev.push({
+        key: `m${m.id}`,
+        ts: new Date(m.created_at).getTime(),
+        icon: "telegram",
+        color:
+          m.direction === "outbound"
+            ? "bg-brand-50 text-brand-600"
+            : "bg-gray-100 text-ink-500",
+        title:
+          m.direction === "outbound"
+            ? "Message sent to patient"
+            : "Message from patient",
+        meta: `${timeAgo(m.created_at)} · Telegram`,
+        body: m.body,
+      });
+    }
+    for (const n of notes) {
+      ev.push({
+        key: `n${n.id}`,
+        ts: new Date(n.created_at).getTime(),
+        icon: "chat",
+        color: "bg-amber-50 text-amber-600",
+        title: `Clinical note · ${n.author}`,
+        meta: timeAgo(n.created_at),
+        body: n.body,
+      });
+    }
+    if (patient) {
+      ev.push({
+        key: "dx",
+        ts: new Date(patient.diagnosed_on).getTime(),
+        icon: "flask",
+        color: "bg-violet-50 text-violet-600",
+        title: `Diagnosed · ${patient.cancer_type} (${patient.stage})`,
+        meta: patient.diagnosed_on,
+        body: `${patient.treatment_line}${
+          patient.regimen ? ` · ${patient.regimen}` : ""
+        }`,
+      });
+    }
+    return ev.sort((a, b) => b.ts - a.ts);
+  }, [followups, symptoms, messages, notes, patient]);
 
   async function sendReply() {
     if (!reply.trim()) return;
@@ -141,23 +221,42 @@ export default function PatientDetail() {
 
       {tab === "timeline" && (
         <div className="card p-5">
-          <div className="space-y-4">
-            {[...followups]
-              .sort((a, b) => b.scheduled_for.localeCompare(a.scheduled_for))
-              .map((f) => (
-                <div key={`f${f.id}`} className="flex gap-3">
-                  <div className="mt-1 flex h-8 w-8 items-center justify-center rounded-full bg-brand-50 text-brand-600">
-                    <Icon.calendar width={15} height={15} />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-ink-900">{f.title}</span>
-                      {statusPill(f.status)}
+          {timeline.length === 0 && (
+            <p className="text-sm text-ink-400">
+              Nothing on the timeline yet. Appointments, symptoms, Telegram
+              messages and notes will appear here as the care journey unfolds.
+            </p>
+          )}
+          <div className="relative space-y-5">
+            {timeline.map((e, i) => {
+              const IconC = Icon[e.icon];
+              return (
+                <div key={e.key} className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <div
+                      className={`flex h-8 w-8 items-center justify-center rounded-full ${e.color}`}
+                    >
+                      <IconC width={15} height={15} />
                     </div>
-                    <div className="text-xs text-ink-400">{formatTime(f.scheduled_for)}</div>
+                    {i < timeline.length - 1 && (
+                      <div className="mt-1 w-px flex-1 bg-black/[0.07]" />
+                    )}
+                  </div>
+                  <div className="flex-1 pb-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium text-ink-900">
+                        {e.title}
+                      </span>
+                      {e.tag}
+                    </div>
+                    <div className="text-xs text-ink-400">{e.meta}</div>
+                    {e.body && (
+                      <p className="mt-1 text-sm text-ink-600">{e.body}</p>
+                    )}
                   </div>
                 </div>
-              ))}
+              );
+            })}
           </div>
         </div>
       )}

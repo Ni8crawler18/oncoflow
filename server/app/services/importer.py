@@ -3,7 +3,8 @@
 Supported inputs:
   - CSV / TSV  (header row with column names)
   - JSON array of patient objects
-  - FHIR R4 Bundle JSON (extracts Patient resources, best-effort)
+  - FHIR R4 Bundle, JSON *or* XML (extracts Patient + linked Condition and
+    MedicationStatement/MedicationRequest resources, best-effort)
 
 Column / field names are matched flexibly (case-insensitive, common aliases),
 so records exported from different HMS / EMR systems can be ingested without
@@ -14,6 +15,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import xml.etree.ElementTree as ET
 from datetime import date, datetime
 
 from sqlalchemy import select
@@ -93,36 +95,195 @@ def _rows_from_csv(text: str) -> list[dict]:
     return [dict(r) for r in reader]
 
 
+def _age_from_birthdate(bd: str) -> int | None:
+    for fmt in ("%Y-%m-%d", "%Y"):
+        try:
+            born = datetime.strptime(bd[: len(fmt) + 2 if fmt == "%Y-%m-%d" else 4], fmt)
+            today = date.today()
+            return today.year - born.year - (
+                (today.month, today.day) < (born.month, born.day))
+        except ValueError:
+            continue
+    return None
+
+
+def _codeable_text(cc: dict) -> str:
+    """Best text for a FHIR CodeableConcept (JSON): text, else first coding."""
+    if not cc:
+        return ""
+    if cc.get("text"):
+        return cc["text"]
+    for c in cc.get("coding", []):
+        if c.get("display"):
+            return c["display"]
+    return ""
+
+
+def _ref_id(ref: str) -> str:
+    """Normalize a subject reference (Patient/p1, urn:uuid:..) to a bare key."""
+    if not ref:
+        return ""
+    return ref.split("/")[-1].replace("urn:uuid:", "")
+
+
 def _rows_from_fhir_bundle(bundle: dict) -> list[dict]:
-    rows = []
+    """Extract patients from a JSON FHIR Bundle, enriching each with the
+    Condition (diagnosis/stage/onset) and medication that reference them."""
+    patients: dict[str, dict] = {}
+    conditions: list[dict] = []
+    meds: list[dict] = []
+
     for entry in bundle.get("entry", []):
         res = entry.get("resource", {})
-        if res.get("resourceType") != "Patient":
-            continue
-        name = ""
-        if res.get("name"):
-            n = res["name"][0]
+        rtype = res.get("resourceType")
+        key = res.get("id") or _ref_id(entry.get("fullUrl", ""))
+        if rtype == "Patient":
+            n = (res.get("name") or [{}])[0]
             name = " ".join(n.get("given", []) + [n.get("family", "")]).strip()
-        phone = ""
-        for t in res.get("telecom", []):
-            if t.get("system") == "phone":
-                phone = t.get("value", "")
-                break
-        rows.append({
-            "name": name,
-            "sex": res.get("gender", ""),
-            "phone": phone,
-            "mrn": res.get("id", ""),
-        })
-    return rows
+            phone = next((t.get("value", "") for t in res.get("telecom", [])
+                          if t.get("system") == "phone"), "")
+            mrn = next((i.get("value") for i in (res.get("identifier") or [])
+                        if i.get("value")), res.get("id", ""))
+            row = {"name": name, "sex": res.get("gender", ""), "phone": phone,
+                   "mrn": mrn}
+            age = _age_from_birthdate(res.get("birthDate", ""))
+            if age is not None:
+                row["age"] = age
+            patients[key] = row
+        elif rtype == "Condition":
+            conditions.append(res)
+        elif rtype in ("MedicationStatement", "MedicationRequest"):
+            meds.append(res)
+
+    for c in conditions:
+        pid = _ref_id((c.get("subject") or {}).get("reference", ""))
+        p = patients.get(pid)
+        if not p:
+            continue
+        p.setdefault("cancer_type", _codeable_text(c.get("code", {})))
+        stages = c.get("stage") or []
+        if stages and not p.get("stage"):
+            p["stage"] = _codeable_text(stages[0].get("summary", {}))
+        if c.get("onsetDateTime") and not p.get("diagnosed_on"):
+            p["diagnosed_on"] = c["onsetDateTime"][:10]
+
+    for m in meds:
+        pid = _ref_id((m.get("subject") or {}).get("reference", ""))
+        p = patients.get(pid)
+        if p and not p.get("regimen"):
+            p["regimen"] = _codeable_text(m.get("medicationCodeableConcept", {}))
+
+    return list(patients.values())
+
+
+# ---- FHIR XML ----
+FHIR_NS = "{http://hl7.org/fhir}"
+
+
+def _lv(elem, *path) -> str:
+    """Navigate child elements by local tag name and return the `value`
+    attribute of the final node (FHIR XML stores scalars as value=...)."""
+    cur = elem
+    for tag in path:
+        if cur is None:
+            return ""
+        cur = cur.find(f"{FHIR_NS}{tag}")
+    return (cur.get("value") if cur is not None else "") or ""
+
+
+def _rows_from_fhir_xml(text: str) -> list[dict]:
+    root = ET.fromstring(text)
+    patients: dict[str, dict] = {}
+    conditions, meds = [], []
+
+    for entry in root.findall(f"{FHIR_NS}entry"):
+        res_wrap = entry.find(f"{FHIR_NS}resource")
+        if res_wrap is None:
+            continue
+        res = list(res_wrap)[0] if len(res_wrap) else None
+        if res is None:
+            continue
+        rtype = res.tag.replace(FHIR_NS, "")
+        key = _lv(res, "id") or _ref_id(_lv(entry, "fullUrl"))
+        if rtype == "Patient":
+            name_el = res.find(f"{FHIR_NS}name")
+            given = [g.get("value", "") for g in name_el.findall(f"{FHIR_NS}given")] \
+                if name_el is not None else []
+            family = _lv(name_el, "family") if name_el is not None else ""
+            name = " ".join([*given, family]).strip()
+            phone = ""
+            for tel in res.findall(f"{FHIR_NS}telecom"):
+                if _lv(tel, "system") == "phone":
+                    phone = _lv(tel, "value")
+                    break
+            ident = res.find(f"{FHIR_NS}identifier")
+            mrn = (_lv(ident, "value") if ident is not None else "") or _lv(res, "id")
+            row = {"name": name, "sex": _lv(res, "gender"), "phone": phone,
+                   "mrn": mrn}
+            age = _age_from_birthdate(_lv(res, "birthDate"))
+            if age is not None:
+                row["age"] = age
+            patients[key] = row
+        elif rtype == "Condition":
+            conditions.append(res)
+        elif rtype in ("MedicationStatement", "MedicationRequest"):
+            meds.append(res)
+
+    def _cc_text(parent, tag) -> str:
+        cc = parent.find(f"{FHIR_NS}{tag}")
+        if cc is None:
+            return ""
+        t = _lv(cc, "text")
+        if t:
+            return t
+        coding = cc.find(f"{FHIR_NS}coding")
+        return _lv(coding, "display") if coding is not None else ""
+
+    for c in conditions:
+        subj = c.find(f"{FHIR_NS}subject")
+        pid = _ref_id(_lv(subj, "reference")) if subj is not None else ""
+        p = patients.get(pid)
+        if not p:
+            continue
+        p.setdefault("cancer_type", _cc_text(c, "code"))
+        stage = c.find(f"{FHIR_NS}stage")
+        if stage is not None and not p.get("stage"):
+            p["stage"] = _cc_text(stage, "summary")
+        onset = _lv(c, "onsetDateTime")
+        if onset and not p.get("diagnosed_on"):
+            p["diagnosed_on"] = onset[:10]
+
+    for m in meds:
+        subj = m.find(f"{FHIR_NS}subject")
+        pid = _ref_id(_lv(subj, "reference")) if subj is not None else ""
+        p = patients.get(pid)
+        if p and not p.get("regimen"):
+            p["regimen"] = _cc_text(m, "medicationCodeableConcept")
+
+    return list(patients.values())
 
 
 def parse(filename: str, content: bytes) -> list[dict]:
     """Return a list of normalized patient dicts (canonical keys)."""
     text = content.decode("utf-8-sig", errors="replace")
     name = filename.lower()
+    stripped = text.lstrip()
 
-    if name.endswith(".json") or text.lstrip().startswith(("{", "[")):
+    if name.endswith((".ttl", ".rdf")) or stripped.startswith("@prefix"):
+        raise ValueError(
+            "FHIR Turtle/RDF is not supported yet — please supply the "
+            "bundle as FHIR XML or JSON.")
+
+    if name.endswith(".xml") or stripped.startswith("<"):
+        raw_rows = _rows_from_fhir_xml(text)
+        mapping = None  # already canonical
+        normalized = []
+        for raw in raw_rows:
+            rec = {f: _coerce(f, raw[f]) for f in ALIASES if f in raw}
+            normalized.append(rec)
+        return normalized
+
+    if name.endswith(".json") or stripped.startswith(("{", "[")):
         data = json.loads(text)
         if isinstance(data, dict) and data.get("resourceType") == "Bundle":
             raw_rows = _rows_from_fhir_bundle(data)

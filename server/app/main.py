@@ -30,6 +30,9 @@ def on_startup() -> None:
             conn.execute(text(
                 "ALTER TABLE patients ADD COLUMN IF NOT EXISTS telegram_chat_id VARCHAR(32)"
             ))
+            conn.execute(text(
+                "ALTER TABLE followups ADD COLUMN IF NOT EXISTS reason TEXT DEFAULT ''"
+            ))
     except Exception:
         pass
     # Ensure the default clinician login exists (non-destructive; only creates

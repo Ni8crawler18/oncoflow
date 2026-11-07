@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Bundle xmlns="http://hl7.org/fhir">
+  <type value="collection"/>
+
+  <!-- Patient 1 -->
+  <entry>
+    <fullUrl value="urn:uuid:p1"/>
+    <resource>
+      <Patient>
+        <id value="p1"/>
+        <identifier><value value="ONC-2001"/></identifier>
+        <name><family value="Krishnan"/><given value="Deepa"/></name>
+        <gender value="female"/>
+        <birthDate value="1972-03-14"/>
+        <telecom><system value="phone"/><value value="+91 90000 10001"/></telecom>
+      </Patient>
+    </resource>
+  </entry>
+  <entry>
+    <resource>
+      <Condition>
+        <subject><reference value="Patient/p1"/></subject>
+        <code><text value="Breast cancer"/></code>
+        <onsetDateTime value="2025-06-10"/>
+        <stage><summary><text value="2-B"/></summary></stage>
+      </Condition>
+    </resource>
+  </entry>
+  <entry>
+    <resource>
+      <MedicationStatement>
+        <subject><reference value="Patient/p1"/></subject>
+        <medicationCodeableConcept><text value="Paclitaxel"/></medicationCodeableConcept>
+      </MedicationStatement>
+    </resource>
+  </entry>
+
+  <!-- Patient 2 -->
+  <entry>
+    <fullUrl value="urn:uuid:p2"/>
+    <resource>
+      <Patient>
+        <id value="p2"/>
+        <identifier><value value="ONC-2002"/></identifier>
+        <name><family value="Gupta"/><given value="Harish"/></name>
+        <gender value="male"/>
+        <birthDate value="1961-07-02"/>
+        <telecom><system value="phone"/><value value="+91 90000 10002"/></telecom>
+      </Patient>
+    </resource>
+  </entry>
+  <entry>
+    <resource>
+      <Condition>
+        <subject><reference value="Patient/p2"/></subject>
+        <code>
+          <coding><display value="Gastric cancer"/></coding>
+        </code>
+        <onsetDateTime value="2025-08-22"/>
+        <stage><summary><text value="3"/></summary></stage>
+      </Condition>
+    </resource>
+  </entry>
+  <entry>
+    <resource>
+      <MedicationStatement>
+        <subject><reference value="Patient/p2"/></subject>
+        <medicationCodeableConcept><text value="FLOT"/></medicationCodeableConcept>
+      </MedicationStatement>
+    </resource>
+  </entry>
+
+  <!-- Patient 3 -->
+  <entry>
+    <fullUrl value="urn:uuid:p3"/>
+    <resource>
+      <Patient>
+        <id value="p3"/>
+        <identifier><value value="ONC-2003"/></identifier>
+        <name><family value="Iyer"/><given value="Meena"/></name>
+        <gender value="female"/>
+        <birthDate value="1968-11-20"/>
+        <telecom><system value="phone"/><value value="+91 90000 10003"/></telecom>
+      </Patient>
+    </resource>
+  </entry>
+  <entry>
+    <resource>
+      <Condition>
+        <subject><reference value="Patient/p3"/></subject>
+        <code><text value="Ovarian cancer"/></code>
+        <onsetDateTime value="2025-05-03"/>
+        <stage><summary><text value="3-C"/></summary></stage>
+      </Condition>
+    </resource>
+  </entry>
+  <entry>
+    <resource>
+      <MedicationStatement>
+        <subject><reference value="Patient/p3"/></subject>
+        <medicationCodeableConcept><text value="Carboplatin + Paclitaxel"/></medicationCodeableConcept>
+      </MedicationStatement>
+    </resource>
+  </entry>
+
+  <!-- Patient 4 -->
+  <entry>
+    <fullUrl value="urn:uuid:p4"/>
+    <resource>
+      <Patient>
+        <id value="p4"/>
+        <identifier><value value="ONC-2004"/></identifier>
+        <name><family value="Verma"/><given value="Sanjay"/></name>
+        <gender value="male"/>
+        <birthDate value="1958-05-09"/>
+        <telecom><system value="phone"/><value value="+91 90000 10004"/></telecom>
+      </Patient>
+    </resource>
+  </entry>
+  <entry>
+    <resource>
+      <Condition>
+        <subject><reference value="Patient/p4"/></subject>
+        <code><text value="Non-Hodgkin lymphoma"/></code>
+        <onsetDateTime value="2025-09-15"/>
+        <stage><summary><text value="2"/></summary></stage>
+      </Condition>
+    </resource>
+  </entry>
+  <entry>
+    <resource>
+      <MedicationStatement>
+        <subject><reference value="Patient/p4"/></subject>
+        <medicationCodeableConcept><text value="R-CHOP"/></medicationCodeableConcept>
+      </MedicationStatement>
+    </resource>
+  </entry>
+
+</Bundle>

@@ -80,6 +80,9 @@ class FollowUp(Base):
     duration_min: Mapped[int] = mapped_column(Integer, default=30)
     status: Mapped[str] = mapped_column(String(24), default="scheduled")  # scheduled|completed|missed|overdue
     priority: Mapped[str] = mapped_column(String(16), default="normal")  # low|normal|high
+    # Why this appointment exists — the clinical rationale shown to the doctor
+    # and used in the patient's Telegram notification.
+    reason: Mapped[str] = mapped_column(Text, default="")
 
     patient: Mapped["Patient"] = relationship(back_populates="followups")
 

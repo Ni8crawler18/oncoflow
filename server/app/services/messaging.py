@@ -59,6 +59,7 @@ def book_from_message(db: Session, patient: Patient, body: str) -> FollowUp:
         duration_min=30,
         status="scheduled",
         priority="high" if patient.risk == "high" else "normal",
+        reason="Requested by the patient over Telegram.",
     )
     db.add(fu)
     db.commit()

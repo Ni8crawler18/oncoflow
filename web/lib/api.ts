@@ -1,11 +1,21 @@
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
+function authHeaders(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const token = localStorage.getItem("oncoflow_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     cache: "no-store",
-    headers: { "Content-Type": "application/json" },
     ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+      ...(init?.headers || {}),
+    },
   });
   if (!res.ok) {
     const detail = await res.text();
@@ -42,8 +52,27 @@ export interface FollowUp {
   duration_min: number;
   status: string;
   priority: string;
+  reason?: string;
   patient_name?: string;
   cancer_type?: string;
+}
+
+export interface AutoScheduleItem {
+  patient_id: number;
+  patient_name: string;
+  kind: string;
+  scheduled_for: string;
+  reason: string;
+  priority: string;
+  notified: boolean;
+  linked: boolean;
+}
+
+export interface AutoScheduleResult {
+  created: number;
+  already_scheduled: number;
+  notified: number;
+  items: AutoScheduleItem[];
 }
 
 export interface Message {
@@ -125,10 +154,7 @@ export const api = {
     req<FollowUp[]>(`/api/followups?status=${status}`),
   allFollowups: () => req<FollowUp[]>(`/api/followups`),
   autoSchedule: () =>
-    req<{ created: number; already_scheduled: number }>(
-      "/api/followups/auto-schedule",
-      { method: "POST" }
-    ),
+    req<AutoScheduleResult>("/api/followups/auto-schedule", { method: "POST" }),
   createPatient: (payload: {
     name: string;
     phone: string;
@@ -185,7 +211,11 @@ export interface ImportResult {
 async function uploadFile<T>(path: string, file: File): Promise<T> {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${API_BASE}${path}`, { method: "POST", body: form });
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: form,
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((data as any)?.detail || `${res.status}`);
   return data as T;

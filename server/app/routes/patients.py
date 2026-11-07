@@ -4,17 +4,27 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Patient, Message, Note, FollowUp, Symptom
+from ..models import Patient, Message, Note, FollowUp, Symptom, Doctor
 from ..schemas import (PatientOut, PatientCreate, MessageOut, NoteOut, NoteCreate,
                        FollowUpOut, SymptomOut)
+from .auth import current_doctor
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
 
 
+def _owned(db: Session, doctor: Doctor, patient_id: int) -> Patient:
+    """Fetch a patient, 404ing unless it belongs to the signed-in doctor."""
+    patient = db.get(Patient, patient_id)
+    if not patient or patient.doctor_id != doctor.id:
+        raise HTTPException(404, "Patient not found")
+    return patient
+
+
 @router.get("", response_model=list[PatientOut])
 def list_patients(q: str | None = None, risk: str | None = None,
+                  doctor: Doctor = Depends(current_doctor),
                   db: Session = Depends(get_db)):
-    stmt = select(Patient)
+    stmt = select(Patient).where(Patient.doctor_id == doctor.id)
     if risk:
         stmt = stmt.where(Patient.risk == risk)
     patients = list(db.scalars(stmt))
@@ -27,8 +37,9 @@ def list_patients(q: str | None = None, risk: str | None = None,
 
 
 @router.post("", response_model=PatientOut, status_code=201)
-def create_patient(payload: PatientCreate, db: Session = Depends(get_db)):
-    count = db.scalar(select(Patient).order_by(Patient.id.desc())) is not None
+def create_patient(payload: PatientCreate,
+                   doctor: Doctor = Depends(current_doctor),
+                   db: Session = Depends(get_db)):
     mrn = payload.mrn or f"ONC-{1000 + (db.query(Patient).count() + 1)}"
     patient = Patient(
         mrn=mrn,
@@ -37,7 +48,7 @@ def create_patient(payload: PatientCreate, db: Session = Depends(get_db)):
         treatment_line=payload.treatment_line, regimen=payload.regimen,
         status=payload.status, risk=payload.risk,
         diagnosed_on=payload.diagnosed_on or date.today(),
-        doctor_id=payload.doctor_id or 1,
+        doctor_id=doctor.id,
     )
     db.add(patient)
     db.commit()
@@ -46,15 +57,15 @@ def create_patient(payload: PatientCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/{patient_id}", response_model=PatientOut)
-def get_patient(patient_id: int, db: Session = Depends(get_db)):
-    patient = db.get(Patient, patient_id)
-    if not patient:
-        raise HTTPException(404, "Patient not found")
-    return patient
+def get_patient(patient_id: int, doctor: Doctor = Depends(current_doctor),
+                db: Session = Depends(get_db)):
+    return _owned(db, doctor, patient_id)
 
 
 @router.get("/{patient_id}/messages", response_model=list[MessageOut])
-def patient_messages(patient_id: int, db: Session = Depends(get_db)):
+def patient_messages(patient_id: int, doctor: Doctor = Depends(current_doctor),
+                     db: Session = Depends(get_db)):
+    _owned(db, doctor, patient_id)
     return list(db.scalars(
         select(Message).where(Message.patient_id == patient_id)
         .order_by(Message.created_at)
@@ -62,7 +73,9 @@ def patient_messages(patient_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{patient_id}/followups", response_model=list[FollowUpOut])
-def patient_followups(patient_id: int, db: Session = Depends(get_db)):
+def patient_followups(patient_id: int, doctor: Doctor = Depends(current_doctor),
+                      db: Session = Depends(get_db)):
+    _owned(db, doctor, patient_id)
     return list(db.scalars(
         select(FollowUp).where(FollowUp.patient_id == patient_id)
         .order_by(FollowUp.scheduled_for)
@@ -70,7 +83,9 @@ def patient_followups(patient_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{patient_id}/symptoms", response_model=list[SymptomOut])
-def patient_symptoms(patient_id: int, db: Session = Depends(get_db)):
+def patient_symptoms(patient_id: int, doctor: Doctor = Depends(current_doctor),
+                     db: Session = Depends(get_db)):
+    _owned(db, doctor, patient_id)
     return list(db.scalars(
         select(Symptom).where(Symptom.patient_id == patient_id)
         .order_by(Symptom.reported_at.desc())
@@ -78,7 +93,9 @@ def patient_symptoms(patient_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{patient_id}/notes", response_model=list[NoteOut])
-def patient_notes(patient_id: int, db: Session = Depends(get_db)):
+def patient_notes(patient_id: int, doctor: Doctor = Depends(current_doctor),
+                  db: Session = Depends(get_db)):
+    _owned(db, doctor, patient_id)
     return list(db.scalars(
         select(Note).where(Note.patient_id == patient_id)
         .order_by(Note.created_at.desc())
@@ -86,9 +103,10 @@ def patient_notes(patient_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{patient_id}/notes", response_model=NoteOut, status_code=201)
-def add_note(patient_id: int, payload: NoteCreate, db: Session = Depends(get_db)):
-    if not db.get(Patient, patient_id):
-        raise HTTPException(404, "Patient not found")
+def add_note(patient_id: int, payload: NoteCreate,
+             doctor: Doctor = Depends(current_doctor),
+             db: Session = Depends(get_db)):
+    _owned(db, doctor, patient_id)
     note = Note(patient_id=patient_id, body=payload.body, author=payload.author)
     db.add(note)
     db.commit()

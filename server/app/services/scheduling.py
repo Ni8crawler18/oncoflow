@@ -8,7 +8,8 @@ from statistics import median
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import FollowUp, Patient
+from ..models import FollowUp, Patient, Symptom, Message
+from ..clients import telegram
 
 CLINIC_START = time(9, 0)
 CLINIC_END = time(17, 0)
@@ -84,49 +85,139 @@ def next_slot_on_or_after(db: Session, start: datetime, duration_min: int) -> da
     return datetime.combine((start + timedelta(days=1)).date(), CLINIC_START)
 
 
-def auto_schedule(db: Session) -> dict:
-    """Create the next follow-up for every patient who lacks an upcoming one.
+def _open_symptoms(db: Session, patient: Patient) -> list[Symptom]:
+    return list(db.scalars(
+        select(Symptom).where(Symptom.patient_id == patient.id,
+                              Symptom.status == "open")
+    ))
 
-    Deterministic: the appointment date is derived from the patient's last
-    appointment plus their inferred cadence, placed in the next free clinic
-    slot. Appointment type rotates labs -> chemo -> review.
+
+def _plan_next(db: Session, patient: Patient, now: datetime) -> dict | None:
+    """Decide the next appointment for a patient and *why*.
+
+    Returns a plan dict (kind, duration, target date, reason, priority,
+    patient_reason) or None if the patient already has an upcoming visit.
+    The reason makes auto-scheduling explainable instead of a magic date.
+    """
+    fus = list(patient.followups)
+    if any(f.status == "scheduled" and f.scheduled_for >= now for f in fus):
+        return None
+
+    cadence = infer_cadence(fus, patient.regimen)
+    completed = [f for f in fus if f.status == "completed"]
+    kind = CYCLE_ROTATION[len(completed) % len(CYCLE_ROTATION)]
+    priority = "high" if patient.risk == "high" else "normal"
+
+    symptoms = _open_symptoms(db, patient)
+    severe = [s for s in symptoms if s.severity in ("severe", "moderate")]
+
+    # Driver 1 — an open symptom brings the review forward.
+    if severe:
+        kind = "review"
+        priority = "high"
+        target = now + timedelta(days=1)
+        top = severe[0]
+        reason = (f"Open {top.severity} symptom reported "
+                  f"({top.description[:60]}) — review brought forward.")
+        patient_reason = ("we'd like to check in on the symptoms you reported")
+    else:
+        last = max((f.scheduled_for for f in fus), default=None)
+        if last is None:
+            # Driver 2 — brand-new patient, first follow-up after diagnosis.
+            target = now + timedelta(days=min(cadence, 14))
+            reason = (f"First follow-up after diagnosis "
+                      f"({patient.cancer_type}); no prior visits on record.")
+            patient_reason = "this is your first scheduled follow-up with the clinic"
+        elif last < now:
+            # Driver 3 — patient is overdue; pull them back into care now.
+            days_over = (now - last).days
+            target = now + timedelta(days=1)
+            reason = (f"Overdue: last visit was {days_over} day(s) ago on "
+                      f"{last.strftime('%d %b')}; rescheduled to the next open slot.")
+            patient_reason = "it's been a while since your last visit"
+        else:
+            # Driver 4 — routine cadence from the patient's own rhythm / regimen.
+            target = last + timedelta(days=cadence)
+            reason = (f"Routine {kind}: {cadence}-day cadence "
+                      f"({patient.regimen or 'standard'}) after "
+                      f"{last.strftime('%d %b')}.")
+            patient_reason = "this is your routine follow-up"
+
+    duration = 60 if kind == "chemo" else 30
+    target = datetime.combine(target.date(), CLINIC_START)
+    slot = next_slot_on_or_after(db, target, duration)
+    return {"kind": kind, "duration": duration, "slot": slot, "reason": reason,
+            "priority": priority, "patient_reason": patient_reason}
+
+
+def _notify_patient(db: Session, patient: Patient, fu: FollowUp,
+                    patient_reason: str) -> bool:
+    """Tell the patient over Telegram that a visit was booked. Records the
+    outbound message so it shows in their thread. Returns True if sent."""
+    when = fu.scheduled_for.strftime("%A, %d %b at %I:%M %p").replace(" 0", " ")
+    first = patient.name.split()[0]
+    text = (f"Hi {first}, this is your OncoFlow care team. We've scheduled your "
+            f"next {fu.kind} for {when} at the clinic — {patient_reason}. "
+            "Reply here if that time doesn't work and we'll find another slot.")
+    db.add(Message(patient_id=patient.id, direction="outbound",
+                   channel="telegram", body=text, category="general"))
+    if not patient.telegram_chat_id:
+        return False
+    result = telegram.send(patient.telegram_chat_id, text)
+    return result.get("status") in ("sent", "mock")
+
+
+def auto_schedule(db: Session, doctor_id: int | None = None) -> dict:
+    """Book the next follow-up for every patient who lacks an upcoming one, each
+    with an explicit clinical reason, and notify the patient over Telegram.
+
+    Scoped to `doctor_id` when given, so each doctor only schedules their own
+    panel. Returns a per-patient summary so the doctor can see *what* was booked,
+    *why*, and *whether the patient was told* — a reviewable flow, not a silent
+    batch.
     """
     now = datetime.now()
-    created, skipped = 0, 0
-    for patient in db.scalars(select(Patient)):
-        fus = list(patient.followups)
-        has_upcoming = any(
-            f.status == "scheduled" and f.scheduled_for >= now for f in fus
-        )
-        if has_upcoming:
+    items: list[dict] = []
+    skipped = 0
+    stmt = select(Patient)
+    if doctor_id is not None:
+        stmt = stmt.where(Patient.doctor_id == doctor_id)
+    for patient in db.scalars(stmt):
+        plan = _plan_next(db, patient, now)
+        if plan is None:
             skipped += 1
             continue
 
-        cadence = infer_cadence(fus, patient.regimen)
-        last = max((f.scheduled_for for f in fus), default=now)
-        target = last + timedelta(days=cadence)
-        if target < now:
-            target = now + timedelta(days=1)
-        target = datetime.combine(target.date(), CLINIC_START)
-
-        duration = 60
-        completed = [f for f in fus if f.status == "completed"]
-        kind = CYCLE_ROTATION[len(completed) % len(CYCLE_ROTATION)]
-        duration = 60 if kind == "chemo" else 30
-
-        slot = next_slot_on_or_after(db, target, duration)
-        db.add(FollowUp(
+        fu = FollowUp(
             patient_id=patient.id,
-            kind=kind,
-            title=f"{kind.title()} (auto-scheduled)",
-            scheduled_for=slot,
-            duration_min=duration,
+            kind=plan["kind"],
+            title=f"{plan['kind'].title()} (auto-scheduled)",
+            scheduled_for=plan["slot"],
+            duration_min=plan["duration"],
             status="scheduled",
-            priority="high" if patient.risk == "high" else "normal",
-        ))
-        created += 1
+            priority=plan["priority"],
+            reason=plan["reason"],
+        )
+        db.add(fu)
+        db.flush()  # assign fu.id before notifying
+        notified = _notify_patient(db, patient, fu, plan["patient_reason"])
+        items.append({
+            "patient_id": patient.id,
+            "patient_name": patient.name,
+            "kind": fu.kind,
+            "scheduled_for": fu.scheduled_for.isoformat(),
+            "reason": fu.reason,
+            "priority": fu.priority,
+            "notified": notified,
+            "linked": bool(patient.telegram_chat_id),
+        })
     db.commit()
-    return {"created": created, "already_scheduled": skipped}
+    return {
+        "created": len(items),
+        "already_scheduled": skipped,
+        "notified": sum(1 for i in items if i["notified"]),
+        "items": items,
+    }
 
 
 def suggest_slots(db: Session, day: datetime, duration_min: int = SLOT_MIN,

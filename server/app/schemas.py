@@ -68,6 +68,7 @@ class FollowUpBase(BaseModel):
     scheduled_for: datetime
     duration_min: int = 30
     priority: str = "normal"
+    reason: str = ""
 
 
 class FollowUpCreate(FollowUpBase):

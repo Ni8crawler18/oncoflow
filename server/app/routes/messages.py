@@ -53,6 +53,16 @@ NOT_FOUND = ("Sorry, we couldn't find a patient with that ID. Please check the I
              "your care team gave you and try again.")
 
 
+def _welcome_and_checkin(db, chat_id, patient):
+    """On first link, greet the patient and have the care team open the
+    conversation with a personalized AI check-in (clinic speaks first)."""
+    telegram.send(chat_id, WELCOME)
+    try:
+        messaging.ai_checkin(db, patient)
+    except messaging.DeliveryError:
+        pass
+
+
 @router.post("/telegram")
 async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
     """Telegram inbound webhook. Links new chats by patient ID, then runs the
@@ -75,7 +85,10 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
             telegram.send(chat_id, WELCOME)
         elif payload:
             linked = messaging.link_patient(db, chat_id, payload)
-            telegram.send(chat_id, WELCOME if linked else NOT_FOUND)
+            if linked:
+                _welcome_and_checkin(db, chat_id, linked)
+            else:
+                telegram.send(chat_id, NOT_FOUND)
         else:
             telegram.send(chat_id, ASK_ID)
         return {"ok": True}
@@ -83,7 +96,10 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
     if not patient:
         # Try to interpret the message as a patient ID to link the account.
         linked = messaging.link_patient(db, chat_id, text)
-        telegram.send(chat_id, WELCOME if linked else ASK_ID)
+        if linked:
+            _welcome_and_checkin(db, chat_id, linked)
+        else:
+            telegram.send(chat_id, ASK_ID)
         return {"ok": True}
 
     result = messaging.file_inbound(db, patient, text)

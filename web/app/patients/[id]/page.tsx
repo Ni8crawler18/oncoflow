@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { QRCodeSVG } from "qrcode.react";
 import { Icon } from "@/components/icons";
+
+const BOT = "oncoflow_bot";
 import { Avatar, riskPill, statusPill, categoryPill, formatTime, timeAgo } from "@/lib/ui";
 import { api, Patient, Message, FollowUp, Note, Symptom } from "@/lib/api";
 
@@ -228,6 +231,25 @@ export default function PatientDetail() {
               {busy ? "Sending…" : "AI symptom check-in"}
             </button>
           </div>
+          {!patient.telegram_chat_id && (
+            <div className="mb-3 flex items-center gap-4 rounded-xl border border-black/[0.06] bg-brand-50/40 p-3">
+              <div className="rounded-xl border border-black/[0.06] bg-white p-2">
+                <QRCodeSVG
+                  value={`https://t.me/${BOT}?start=${encodeURIComponent(patient.mrn)}`}
+                  size={96}
+                  level="M"
+                />
+              </div>
+              <div className="text-xs text-ink-600">
+                <div className="mb-0.5 font-medium text-ink-800">
+                  Link this patient on Telegram
+                </div>
+                Ask {patient.name.split(" ")[0]} to scan this QR (or open the bot
+                and tap Start). They connect by ID {patient.mrn}, then the care
+                team can message them here.
+              </div>
+            </div>
+          )}
           <div className="flex-1 space-y-3 overflow-y-auto pr-1">
             {messages.map((m) => (
               <div

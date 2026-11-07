@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { api, Patient } from "@/lib/api";
 import { Icon } from "@/components/icons";
 
@@ -107,10 +108,15 @@ export default function AddPatientModal({
               <Icon.telegram width={16} height={16} /> Link their Telegram
             </div>
             <p className="mb-3 text-xs text-ink-500">
-              Share this link with the patient. When they open it and tap Start,
-              their Telegram connects to this record and the care team can message
-              them. (The bot links them by their ID — {created.mrn}.)
+              Have the patient scan this QR with their phone, or share the link.
+              When they open it and tap Start, their Telegram connects to this
+              record and the care team can message them. (Linked by ID {created.mrn}.)
             </p>
+            <div className="mb-3 flex justify-center">
+              <div className="rounded-2xl border border-black/[0.06] bg-white p-3 shadow-soft">
+                <QRCodeSVG value={link} size={168} level="M" />
+              </div>
+            </div>
             <div className="flex gap-2">
               <input
                 readOnly

@@ -5,7 +5,7 @@ import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import { Icon } from "@/components/icons";
 import { statusPill } from "@/lib/ui";
-import { api, FollowUp, AutoScheduleResult } from "@/lib/api";
+import { api, API_BASE, FollowUp, AutoScheduleResult } from "@/lib/api";
 
 const KIND_COLOR: Record<string, string> = {
   chemo: "bg-violet-100 text-violet-700",
@@ -31,11 +31,28 @@ export default function AppointmentsPage() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<AutoScheduleResult | null>(null);
   const [err, setErr] = useState("");
+  const [calUrl, setCalUrl] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [showCal, setShowCal] = useState(false);
 
   function load() {
     api.allFollowups().then(setItems).catch(() => {});
   }
   useEffect(load, []);
+  useEffect(() => {
+    api
+      .calendarUrl()
+      .then((r) => setCalUrl(`${API_BASE}${r.path}`))
+      .catch(() => {});
+  }, []);
+
+  async function copyCal() {
+    try {
+      await navigator.clipboard.writeText(calUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  }
 
   async function runAuto() {
     setBusy(true);
@@ -88,16 +105,57 @@ export default function AppointmentsPage() {
         title="Appointments"
         subtitle="Every follow-up across your patient panel, on one calendar."
         right={
-          <button
-            onClick={runAuto}
-            disabled={busy}
-            className="flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
-          >
-            <Icon.bolt width={15} height={15} stroke="white" />
-            {busy ? "Scheduling…" : "Auto-schedule follow-ups"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCal((s) => !s)}
+              className="flex items-center gap-2 rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink-700 transition hover:bg-black/5"
+            >
+              <Icon.calendar width={15} height={15} />
+              Add to calendar
+            </button>
+            <button
+              onClick={runAuto}
+              disabled={busy}
+              className="flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
+            >
+              <Icon.bolt width={15} height={15} stroke="white" />
+              {busy ? "Scheduling…" : "Auto-schedule follow-ups"}
+            </button>
+          </div>
         }
       />
+
+      {showCal && (
+        <div className="card mb-5 p-5">
+          <h2 className="text-sm font-semibold text-ink-900">
+            Subscribe to your appointments in Google Calendar
+          </h2>
+          <p className="mt-1 text-xs text-ink-500">
+            Add this feed once — every appointment, including future
+            auto-scheduled ones, appears in your calendar and refreshes
+            automatically. Works with Google Calendar, Apple Calendar and Outlook.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <input
+              readOnly
+              value={calUrl}
+              onFocus={(e) => e.currentTarget.select()}
+              className="flex-1 rounded-xl border border-black/10 bg-black/[0.02] px-3.5 py-2.5 font-mono text-xs text-ink-700 outline-none"
+            />
+            <button
+              onClick={copyCal}
+              className="rounded-xl bg-brand-500 px-4 text-sm font-semibold text-white hover:bg-brand-600"
+            >
+              {copied ? "Copied!" : "Copy"}
+            </button>
+          </div>
+          <ol className="mt-3 list-decimal space-y-0.5 pl-5 text-xs text-ink-500">
+            <li>Open Google Calendar → “Other calendars” → “From URL”.</li>
+            <li>Paste the link above and click “Add calendar”.</li>
+            <li>Your OncoFlow appointments appear within a few minutes.</li>
+          </ol>
+        </div>
+      )}
       {err && <div className="mb-4 text-sm text-rose-600">{err}</div>}
 
       {result && (

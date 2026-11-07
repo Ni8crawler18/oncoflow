@@ -49,3 +49,24 @@ def decode_token(token: str) -> dict | None:
         return jwt.decode(token, settings.jwt_secret, algorithms=[_ALGO])
     except Exception:
         return None
+
+
+def calendar_token(doctor_id: int) -> str:
+    """A stable, non-expiring, unguessable token for a doctor's calendar feed.
+
+    `<doctor_id>.<hmac>` — lets Google Calendar subscribe via a plain URL
+    (it can't send auth headers) while keeping each feed private.
+    """
+    sig = hmac.new(settings.jwt_secret.encode(), f"cal:{doctor_id}".encode(),
+                   hashlib.sha256).hexdigest()[:32]
+    return f"{doctor_id}.{sig}"
+
+
+def verify_calendar_token(token: str) -> int | None:
+    try:
+        doctor_id = int(token.split(".", 1)[0])
+    except (ValueError, AttributeError):
+        return None
+    if hmac.compare_digest(token, calendar_token(doctor_id)):
+        return doctor_id
+    return None

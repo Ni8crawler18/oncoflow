@@ -155,6 +155,8 @@ export const api = {
   allFollowups: () => req<FollowUp[]>(`/api/followups`),
   autoSchedule: () =>
     req<AutoScheduleResult>("/api/followups/auto-schedule", { method: "POST" }),
+  calendarUrl: () =>
+    req<{ path: string; token: string }>("/api/followups/calendar-url"),
   createPatient: (payload: {
     name: string;
     phone: string;

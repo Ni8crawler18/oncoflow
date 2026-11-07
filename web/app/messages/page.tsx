@@ -5,17 +5,33 @@ import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import { Icon } from "@/components/icons";
 import { Avatar, categoryPill, timeAgo } from "@/lib/ui";
-import { api, Message, Patient } from "@/lib/api";
+import { api, Message, Patient, CheckinRun } from "@/lib/api";
 
 export default function MessagesPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [filter, setFilter] = useState("all");
+  const [busy, setBusy] = useState(false);
+  const [run, setRun] = useState<CheckinRun | null>(null);
 
-  useEffect(() => {
+  function load() {
     api.messages().then(setMessages).catch(() => {});
     api.patients().then(setPatients).catch(() => {});
-  }, []);
+  }
+  useEffect(load, []);
+
+  async function runCheckins() {
+    setBusy(true);
+    try {
+      const r = await api.runCheckins();
+      setRun(r);
+      load();
+    } catch {
+      /* ignore */
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const nameFor = useMemo(() => {
     const m = new Map(patients.map((p) => [p.id, p.name]));
@@ -31,12 +47,63 @@ export default function MessagesPage() {
         title="Telegram Inbox"
         subtitle="Patient messages are auto-classified and filed under each patient."
         right={
-          <div className="flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-sm shadow-soft">
-            <Icon.telegram width={16} height={16} />
-            <span className="font-medium text-ink-700">Telegram</span>
-          </div>
+          <button
+            onClick={runCheckins}
+            disabled={busy}
+            className="flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
+          >
+            <Icon.bolt width={15} height={15} stroke="white" />
+            {busy ? "Sending…" : "Run AI check-ins"}
+          </button>
         }
       />
+
+      {run && (
+        <div className="card mb-4 p-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-ink-900">
+              {run.sent > 0
+                ? `Sent ${run.sent} AI check-in${run.sent !== 1 ? "s" : ""}`
+                : "No check-ins were due"}
+            </h2>
+            <button
+              onClick={() => setRun(null)}
+              className="text-xs text-ink-400 hover:text-ink-700"
+            >
+              Dismiss
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-ink-500">
+            {run.not_due} patient{run.not_due !== 1 ? "s" : ""} contacted recently
+            (not due){run.unlinked > 0 && (
+              <>
+                {" · "}
+                <span className="text-amber-600">
+                  {run.unlinked} not on Telegram yet — onboard them to enable
+                  check-ins
+                </span>
+              </>
+            )}
+            .
+          </p>
+          {run.items.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {run.items.map((it) => (
+                <Link
+                  key={it.patient_id}
+                  href={`/patients/${it.patient_id}`}
+                  className="block rounded-xl border border-black/[0.05] p-3 transition hover:bg-brand-50/40"
+                >
+                  <div className="text-sm font-medium text-ink-900">
+                    {it.patient_name}
+                  </div>
+                  <p className="mt-0.5 text-xs text-ink-500">“{it.body}”</p>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="mb-4 flex gap-1 rounded-xl bg-white p-1 shadow-soft w-fit">
         {[

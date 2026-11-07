@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     sarvam_api_key: str = ""
     sarvam_model: str = "sarvam-105b-conversations"
 
+    # Proactive AI check-ins. A linked patient with no care-team contact in this
+    # many days is "due" for an automatic check-in. CRON_SECRET guards the
+    # unauthenticated cron endpoint that fires them across all doctors.
+    checkin_interval_days: int = 7
+    cron_secret: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

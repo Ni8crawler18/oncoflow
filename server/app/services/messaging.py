@@ -186,3 +186,54 @@ def send_outbound(db: Session, patient: Patient, body: str) -> Message:
 
 def ai_checkin(db: Session, patient: Patient) -> Message:
     return _deliver_and_record(db, patient, ai.generate_checkin(patient))
+
+
+def _due_for_checkin(patient: Patient, now: datetime, interval_days: int) -> bool:
+    """A linked patient is due when the care team hasn't contacted them within
+    `interval_days`, without double-sending if we already reached out today."""
+    outbound = [m.created_at for m in patient.messages
+                if m.direction == "outbound" and m.created_at]
+    last_out = max(outbound, default=None)
+    if last_out and last_out.date() == now.date():
+        return False  # already checked in today
+    contacts = [m.created_at for m in patient.messages if m.created_at]
+    reference = max(contacts, default=None)
+    if reference is None and patient.last_contact is not None:
+        reference = datetime.combine(patient.last_contact, datetime.min.time())
+    if reference is None:
+        return True  # linked but never contacted → reach out
+    return (now - reference).days >= interval_days
+
+
+def run_checkins(db: Session, doctor_id: int | None = None) -> dict:
+    """Send a proactive AI check-in to every linked patient who is due for one.
+
+    This is the autonomous engagement loop: scoped to `doctor_id` when given,
+    it reaches out to patients the care team hasn't contacted recently. Patients
+    who aren't on Telegram yet are reported so the doctor can onboard them.
+    """
+    from ..config import settings
+    now = datetime.now()
+    interval = settings.checkin_interval_days
+    stmt = select(Patient)
+    if doctor_id is not None:
+        stmt = stmt.where(Patient.doctor_id == doctor_id)
+
+    sent: list[dict] = []
+    skipped = 0
+    unlinked = 0
+    for patient in db.scalars(stmt):
+        if not patient.telegram_chat_id:
+            unlinked += 1
+            continue
+        if not _due_for_checkin(patient, now, interval):
+            skipped += 1
+            continue
+        try:
+            msg = ai_checkin(db, patient)
+            sent.append({"patient_id": patient.id, "patient_name": patient.name,
+                         "body": msg.body})
+        except DeliveryError:
+            skipped += 1
+    return {"sent": len(sent), "items": sent, "not_due": skipped,
+            "unlinked": unlinked}

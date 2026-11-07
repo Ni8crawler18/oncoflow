@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..config import settings
 from ..models import Message, Patient, Doctor
 from ..schemas import MessageOut, SendMessage
 from ..services import messaging
@@ -50,6 +51,23 @@ def checkin(payload: dict, doctor: Doctor = Depends(current_doctor),
         return messaging.ai_checkin(db, patient)
     except messaging.DeliveryError as exc:
         raise HTTPException(409, str(exc))
+
+
+@router.post("/run-checkins")
+def run_checkins(doctor: Doctor = Depends(current_doctor),
+                 db: Session = Depends(get_db)):
+    """Doctor-triggered: send AI check-ins to this doctor's due patients now."""
+    return messaging.run_checkins(db, doctor_id=doctor.id)
+
+
+@router.post("/run-checkins/cron")
+def run_checkins_cron(x_cron_key: str = Header(default=""),
+                      db: Session = Depends(get_db)):
+    """Autonomous daily run across all doctors. Guarded by a shared secret so a
+    scheduler (e.g. Render Cron) can call it without a user session."""
+    if not settings.cron_secret or x_cron_key != settings.cron_secret:
+        raise HTTPException(403, "Invalid cron key")
+    return messaging.run_checkins(db)
 
 
 # ---- Telegram webhook ----

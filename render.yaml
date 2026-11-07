@@ -27,6 +27,31 @@ services:
         sync: false
       - key: SARVAM_API_KEY
         sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: CRON_SECRET
+        generateValue: true
+
+  # Daily autonomous AI check-ins: calls the guarded cron endpoint so linked
+  # patients who are due get a proactive message without anyone clicking.
+  - type: cron
+    name: oncoflow-checkins
+    runtime: python
+    rootDir: server
+    plan: free
+    schedule: "30 3 * * *"        # 09:00 IST daily (03:30 UTC)
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: >-
+      curl -fsS -X POST "$API_BASE_URL/api/messages/run-checkins/cron"
+      -H "X-Cron-Key: $CRON_SECRET"
+    envVars:
+      - key: API_BASE_URL
+        sync: false              # your API URL, e.g. https://oncoflow-api.onrender.com
+      - key: CRON_SECRET
+        fromService:
+          type: web
+          name: oncoflow-api
+          envVarKey: CRON_SECRET
 
 databases:
   - name: oncoflow-db

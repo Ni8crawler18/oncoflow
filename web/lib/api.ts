@@ -144,6 +144,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ patient_id }),
     }),
+  runCheckins: () =>
+    req<CheckinRun>("/api/messages/run-checkins", { method: "POST" }),
   symptomsFeed: () => req<SymptomFeed[]>("/api/dashboard/symptoms"),
   addNote: (id: number, body: string) =>
     req<Note>(`/api/patients/${id}/notes`, {
@@ -196,6 +198,13 @@ export const api = {
   importPreview: (file: File) => uploadFile<ImportPreview>("/api/import/preview", file),
   importPatients: (file: File) => uploadFile<ImportResult>("/api/import/patients", file),
 };
+
+export interface CheckinRun {
+  sent: number;
+  items: { patient_id: number; patient_name: string; body: string }[];
+  not_due: number;
+  unlinked: number;
+}
 
 export interface ImportPreview {
   filename: string;

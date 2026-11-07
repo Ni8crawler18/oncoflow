@@ -1,10 +1,12 @@
 """Patient messaging over Telegram: linking, inbound symptom capture, AI reply."""
+from datetime import datetime, timedelta
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Patient, Message, Symptom
+from ..models import Patient, Message, Symptom, FollowUp
 from ..clients import telegram
-from . import ai
+from . import ai, scheduling
 
 SYMPTOM_KEYWORDS = (
     "symptom", "pain", "fever", "nausea", "vomit", "bleed", "breathless",
@@ -12,6 +14,56 @@ SYMPTOM_KEYWORDS = (
     "diarrhoea", "diarrhea", "numb", "tingling", "appetite", "weak",
 )
 FEEDBACK_KEYWORDS = ("feedback", "thank", "better", "appointment", "reschedule")
+SCHEDULE_KEYWORDS = (
+    "schedule", "appointment", "book", "reschedule", "meet", "visit",
+    "come in", "see the doctor", "see doctor", "slot", "follow up", "follow-up",
+)
+WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday",
+            "saturday", "sunday")
+
+
+def wants_schedule(body: str) -> bool:
+    low = body.lower()
+    return any(k in low for k in SCHEDULE_KEYWORDS)
+
+
+def _preferred_start(body: str) -> datetime:
+    """Infer a target start date from free text (e.g. 'next monday',
+    'tomorrow'). Falls back to the next day."""
+    low = body.lower()
+    now = datetime.now()
+    if "today" in low:
+        return now
+    if "tomorrow" in low:
+        return now + timedelta(days=1)
+    for i, name in enumerate(WEEKDAYS):
+        if name in low:
+            ahead = (i - now.weekday()) % 7
+            if ahead == 0 or "next" in low:
+                ahead = ahead or 7
+            return now + timedelta(days=ahead)
+    if "next week" in low:
+        return now + timedelta(days=7)
+    return now + timedelta(days=1)
+
+
+def book_from_message(db: Session, patient: Patient, body: str) -> FollowUp:
+    """Create a conflict-free follow-up for the patient from a chat request."""
+    target = scheduling.next_slot_on_or_after(
+        db, _preferred_start(body), duration_min=30)
+    fu = FollowUp(
+        patient_id=patient.id,
+        kind="review",
+        title="Review (requested via Telegram)",
+        scheduled_for=target,
+        duration_min=30,
+        status="scheduled",
+        priority="high" if patient.risk == "high" else "normal",
+    )
+    db.add(fu)
+    db.commit()
+    db.refresh(fu)
+    return fu
 
 
 class DeliveryError(Exception):
@@ -86,12 +138,28 @@ def file_inbound(db: Session, patient: Patient, body: str) -> dict:
         db.commit()
 
     db.refresh(patient)
-    reply = ai.generate_reply(patient, body)
+
+    booking = None
+    if wants_schedule(body):
+        booking = book_from_message(db, patient, body)
+        msg.category = "feedback"
+        db.commit()
+        doctor = patient.doctor.name if patient.doctor else "your care team"
+        when = booking.scheduled_for.strftime("%A, %d %b %Y at %I:%M %p").lstrip("0")
+        reply = (
+            f"On behalf of {doctor}, your appointment is confirmed for "
+            f"{when} at the clinic. You'll get a reminder before then. Please "
+            "reach out here if anything changes or your symptoms get worse."
+        )
+    else:
+        reply = ai.generate_reply(patient, body)
+
     if reply:
         db.add(Message(patient_id=patient.id, direction="outbound",
                        channel="telegram", body=reply, category="general"))
         db.commit()
-    return {"patient": patient, "message": msg, "symptom": symptom, "reply": reply}
+    return {"patient": patient, "message": msg, "symptom": symptom,
+            "reply": reply, "booking": booking}
 
 
 def _deliver_and_record(db: Session, patient: Patient, body: str) -> Message:

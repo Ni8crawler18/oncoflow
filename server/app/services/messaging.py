@@ -27,6 +27,23 @@ def normalize_phone(raw: str) -> str:
     return raw.replace("whatsapp:", "").strip()
 
 
+def _digits(raw: str) -> str:
+    return "".join(ch for ch in raw if ch.isdigit())
+
+
+def match_patient(db: Session, from_phone: str) -> Patient | None:
+    """Match an inbound sender to a patient by phone digits (provider-agnostic:
+    Twilio sends '+<e164>', Meta sends '<e164>' without the plus)."""
+    target = _digits(from_phone)
+    if not target:
+        return None
+    for p in db.scalars(select(Patient)):
+        pd = _digits(p.phone)
+        if pd and (pd == target or pd.endswith(target) or target.endswith(pd)):
+            return p
+    return None
+
+
 def _record_symptom(db: Session, patient: Patient, body: str) -> Symptom | None:
     """Use AI (fallback: keywords) to capture a post-care symptom."""
     analysis = ai.analyze_symptom(body)
@@ -57,8 +74,7 @@ def file_inbound(db: Session, from_phone: str, body: str) -> dict:
     Returns {"patient": Patient|None, "message": Message|None,
              "symptom": Symptom|None, "reply": str}
     """
-    phone = normalize_phone(from_phone)
-    patient = db.scalar(select(Patient).where(Patient.phone == phone))
+    patient = match_patient(db, from_phone)
     if not patient:
         return {"patient": None, "message": None, "symptom": None, "reply": ""}
 
@@ -92,7 +108,9 @@ def _deliver_and_record(db: Session, patient: Patient, body: str) -> Message:
     result = whatsapp.send(patient.phone, body)
     if result.get("status") == "failed":
         err = result.get("error", "")
-        if "ContentSid" in err or "63016" in err:
+        # Meta error 131047/131026: outside the 24h customer-service window —
+        # business-initiated messages then require an approved message template.
+        if "131047" in err or "131026" in err or "24 hours" in err or "re-engag" in err.lower():
             raise DeliveryError(
                 "WhatsApp won't deliver this: the patient hasn't messaged in the "
                 "last 24 hours, so a business-initiated message needs an approved "

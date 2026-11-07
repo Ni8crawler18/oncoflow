@@ -40,31 +40,16 @@ class Settings(BaseSettings):
     # Auth. Override in production via JWT_SECRET env var.
     jwt_secret: str = "oncoflow-dev-secret-change-me"
 
-    # Twilio / WhatsApp. Leave credentials blank to run in mock mode (messages
-    # are logged, not sent). Inbound webhook still works for the demo.
-    #
-    # Two auth styles are supported:
-    #   1. Account SID (AC...) + Auth Token
-    #   2. API Key SID (SK...) + API Key Secret + Account SID (AC...)
-    twilio_account_sid: str = ""          # AC...  (required to actually send)
-    twilio_auth_token: str = ""           # account auth token (style 1)
-    twilio_api_key_sid: str = ""          # SK...  (style 2)
-    twilio_api_key_secret: str = ""       # api key secret (style 2)
-    twilio_whatsapp_from: str = "whatsapp:+14155238886"  # Twilio sandbox number
+    # Meta WhatsApp Cloud API. Leave credentials blank to run in mock mode
+    # (messages are logged, not sent).
+    meta_phone_number_id: str = ""
+    meta_access_token: str = ""
+    meta_verify_token: str = "oncoflow-verify"   # for webhook verification handshake
+    meta_graph_version: str = "v21.0"
 
     # Sarvam AI — conversational patient follow-up.
     sarvam_api_key: str = ""
     sarvam_model: str = "sarvam-105b-conversations"
-
-    @property
-    def twilio_configured(self) -> bool:
-        if self.twilio_account_sid and self.twilio_auth_token:
-            return True
-        return bool(
-            self.twilio_api_key_sid
-            and self.twilio_api_key_secret
-            and self.twilio_account_sid
-        )
 
 
 @lru_cache

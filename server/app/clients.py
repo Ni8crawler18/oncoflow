@@ -1,9 +1,12 @@
-"""External service clients.
+"""External service clients: Meta WhatsApp Cloud API and Sarvam AI.
 
-Currently: Twilio WhatsApp. Falls back to a mock when credentials are not
-configured, so the demo works offline (outbound messages are logged).
+Both fall back to a mock (log instead of call) when credentials are absent, so
+the app always runs.
 """
 import logging
+import json
+import urllib.request
+import urllib.error
 
 from .config import settings
 
@@ -11,45 +14,45 @@ logger = logging.getLogger("oncoflow.clients")
 
 
 class WhatsAppClient:
-    def __init__(self) -> None:
-        self._client = None
-        if settings.twilio_configured:
-            try:
-                from twilio.rest import Client
-
-                if settings.twilio_api_key_sid and settings.twilio_api_key_secret:
-                    # API Key auth: (api_key_sid, api_key_secret, account_sid)
-                    self._client = Client(
-                        settings.twilio_api_key_sid,
-                        settings.twilio_api_key_secret,
-                        settings.twilio_account_sid,
-                    )
-                else:
-                    # Account SID + Auth Token
-                    self._client = Client(
-                        settings.twilio_account_sid, settings.twilio_auth_token
-                    )
-            except Exception as exc:  # pragma: no cover
-                logger.warning("Twilio init failed, using mock mode: %s", exc)
+    """Meta WhatsApp Cloud API (Graph API)."""
 
     @property
     def live(self) -> bool:
-        return self._client is not None
+        return bool(settings.meta_phone_number_id and settings.meta_access_token)
+
+    @staticmethod
+    def _digits(phone: str) -> str:
+        return "".join(ch for ch in phone if ch.isdigit())
 
     def send(self, to_phone: str, body: str) -> dict:
-        """Send a WhatsApp message. `to_phone` is E.164 (e.g. +15551234567)."""
-        to = to_phone if to_phone.startswith("whatsapp:") else f"whatsapp:{to_phone}"
-        if not self._client:
+        """Send a WhatsApp text message. `to_phone` is any E.164 form."""
+        to = self._digits(to_phone)
+        if not self.live:
             logger.info("[MOCK WhatsApp] to=%s body=%s", to, body)
             return {"status": "mock", "to": to, "body": body}
+
+        url = (f"https://graph.facebook.com/{settings.meta_graph_version}/"
+               f"{settings.meta_phone_number_id}/messages")
+        payload = json.dumps({
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "text",
+            "text": {"preview_url": False, "body": body},
+        }).encode()
+        req = urllib.request.Request(url, data=payload, headers={
+            "Authorization": f"Bearer {settings.meta_access_token}",
+            "Content-Type": "application/json",
+        })
         try:
-            msg = self._client.messages.create(
-                from_=settings.twilio_whatsapp_from, to=to, body=body
-            )
-            return {"status": msg.status, "sid": msg.sid, "to": to}
-        except Exception as exc:
-            # Common case: outside the WhatsApp 24h session window (business-initiated
-            # messages then require an approved template). Don't crash the request.
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read())
+            mid = (data.get("messages") or [{}])[0].get("id")
+            return {"status": "sent", "id": mid, "to": to}
+        except urllib.error.HTTPError as exc:
+            err = exc.read().decode(errors="replace")
+            logger.warning("WhatsApp send failed to %s: %s", to, err)
+            return {"status": "failed", "to": to, "error": err}
+        except Exception as exc:  # pragma: no cover
             logger.warning("WhatsApp send failed to %s: %s", to, exc)
             return {"status": "failed", "to": to, "error": str(exc)}
 
@@ -70,9 +73,6 @@ class SarvamClient:
              temperature: float = 0.4) -> str:
         if not self.live:
             return ""
-        import urllib.request
-        import json
-
         payload = json.dumps({
             "model": settings.sarvam_model,
             "messages": messages,

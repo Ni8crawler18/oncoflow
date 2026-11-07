@@ -1,6 +1,6 @@
 # Render blueprint: OncoFlow backend API + PostgreSQL.
 # Deploy: push to GitHub, then in Render "New > Blueprint" and point at this repo.
-# Set the secret env vars (Twilio, Sarvam) in the Render dashboard after creation.
+# Set the secret env vars (Meta WhatsApp, Sarvam) in the Render dashboard after creation.
 services:
   - type: web
     name: oncoflow-api
@@ -19,12 +19,12 @@ services:
         sync: false          # set to your Vercel URL, e.g. https://oncoflow.vercel.app
       - key: JWT_SECRET
         generateValue: true
-      - key: TWILIO_ACCOUNT_SID
+      - key: META_PHONE_NUMBER_ID
         sync: false
-      - key: TWILIO_AUTH_TOKEN
+      - key: META_ACCESS_TOKEN
         sync: false
-      - key: TWILIO_WHATSAPP_FROM
-        value: "whatsapp:+14155238886"
+      - key: META_VERIFY_TOKEN
+        sync: false
       - key: SARVAM_API_KEY
         sync: false
 

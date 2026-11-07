@@ -1,0 +1,46 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-inter: "Inter", system-ui, sans-serif;
+}
+
+html,
+body {
+  background: var(--canvas, #f6f7f9);
+  color: #0f1115;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl bg-white shadow-card border border-black/[0.04];
+  }
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+  .nav-item {
+    @apply flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-ink-500 transition hover:bg-black/[0.035] hover:text-ink-900;
+  }
+  .nav-item-active {
+    @apply bg-brand-500 text-white shadow-soft hover:bg-brand-500 hover:text-white;
+  }
+  .nav-label {
+    @apply px-3 pt-5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-ink-400;
+  }
+}
+
+/* Thin, subtle scrollbars for the premium feel */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(16, 18, 27, 0.12);
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
